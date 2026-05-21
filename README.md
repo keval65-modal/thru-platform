@@ -45,3 +45,7 @@ Run in Supabase SQL editor, in order as needed:
 
 - **Remote:** https://github.com/keval65-modal/thru-platform
 - Secrets and `node_modules` are excluded via root `.gitignore`.
+
+## Vercel (monorepo)
+
+See [docs/VERCEL_MONOREPO.md](docs/VERCEL_MONOREPO.md) for per-project root directories and CLI deploy commands.
