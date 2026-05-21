@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Maps API Key Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        #status {
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        #autocomplete {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔑 Google Maps API Key Test</h1>
+    
+    <div id="status">Loading...</div>
+    
+    <h2>Test Autocomplete:</h2>
+    <input id="autocomplete" type="text" placeholder="Start typing an address...">
+    
+    <h2>Selected Place:</h2>
+    <pre id="result">No place selected yet</pre>
+    
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Replace YOUR_API_KEY_HERE in the script URL below with your actual API key</li>
+        <li>Open this file in a browser</li>
+        <li>Check if the status shows "✅ API Key is working!"</li>
+        <li>Try typing an address in the input field</li>
+    </ol>
+    
+    <script>
+        // This will be called when Google Maps loads successfully
+        function initMap() {
+            const status = document.getElementById('status');
+            status.className = 'success';
+            status.textContent = '✅ API Key is working! Google Maps loaded successfully.';
+            
+            // Initialize autocomplete
+            const input = document.getElementById('autocomplete');
+            const autocomplete = new google.maps.places.Autocomplete(input, {
+                fields: ['formatted_address', 'geometry', 'name']
+            });
+            
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                const result = document.getElementById('result');
+                
+                if (place.geometry) {
+                    result.textContent = JSON.stringify({
+                        name: place.name,
+                        address: place.formatted_address,
+                        lat: place.geometry.location.lat(),
+                        lng: place.geometry.location.lng()
+                    }, null, 2);
+                } else {
+                    result.textContent = 'No geometry data available for this place';
+                }
+            });
+        }
+        
+        // This will be called if the API key is invalid
+        function gm_authFailure() {
+            const status = document.getElementById('status');
+            status.className = 'error';
+            status.textContent = '❌ API Key authentication failed! Check your key and restrictions.';
+        }
+    </script>
+    
+    <!-- REPLACE YOUR_API_KEY_HERE WITH YOUR ACTUAL API KEY -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY_HERE&libraries=places&callback=initMap" 
+            async defer></script>
+</body>
+</html>

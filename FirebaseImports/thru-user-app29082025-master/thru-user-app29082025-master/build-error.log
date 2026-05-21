@@ -1,0 +1,51 @@
+
+> nextn@0.1.0 build
+> next build
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of F:\Cursor Projects\FirebaseImports\thru-user-app29082025-master\package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * F:\Cursor Projects\FirebaseImports\thru-user-app29082025-master\thru-user-app29082025-master\package-lock.json
+
+   ▲ Next.js 15.5.7
+   - Environments: .env.local
+   - Experiments (use with caution):
+     ✓ webpackBuildWorker
+
+   Creating an optimized production build ...
+Failed to compile.
+
+./src/app/demo/vendor/page.tsx
+Module not found: Can't resolve '@zxing/browser'
+
+https://nextjs.org/docs/messages/module-not-found
+
+./src/app/v2/page.tsx
+Module not found: Can't resolve '@zxing/browser'
+
+https://nextjs.org/docs/messages/module-not-found
+
+./src/app/page.tsx
+Error:   [31mx[0m You're importing a component that needs `useEffect`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+  [31m|[0m
+  [31m|[0m  Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+  [31m|[0m
+
+    ,-[[36;1;4mF:\Cursor Projects\FirebaseImports\thru-user-app29082025-master\thru-user-app29082025-master\src\app\page.tsx[0m:9:1]
+ [2m 6[0m | import { HorizontalContainer } from '@/components/landing/HorizontalContainer';
+ [2m 7[0m | import { RouteSection } from '@/components/landing/RouteSection';
+ [2m 8[0m | import { ShopFronts } from '@/components/landing/ShopFronts';
+ [2m 9[0m | import { useEffect } from 'react';
+    : [35;1m         ^^^^^^^^^[0m
+ [2m10[0m | import { WaitlistForm } from '@/components/landing/WaitlistForm';
+ [2m11[0m | 
+ [2m11[0m | export default function LandingPage() {
+    `----
+
+Import trace for requested module:
+./src/app/page.tsx
+
+
+> Build failed because of webpack errors

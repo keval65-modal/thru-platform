@@ -1,0 +1,208 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
+import { getSession } from '@/lib/auth';
+import { getSupabaseDbClient } from '@/lib/supabase-auth';
+import {
+  AGREEMENT_VERSION,
+  buildAgreementForLanguage,
+  resolveAgreementLanguage,
+} from '@/agreements';
+import { buildCanonicalAgreementString } from '@/lib/agreement-canon';
+import { generateAgreementPdfFromTemplate } from '@/lib/agreement-pdf-lib';
+import { signatureMatchesLegalName } from '@/lib/agreement-signing-utils';
+import { normalizePhoneE164 } from '@/lib/phone-e164';
+import { sendMerchantWelcomeAfterVerification } from '@/services/whatsapp/sendMerchantWelcomeAfterVerification';
+
+export const runtime = 'nodejs';
+export const maxDuration = 120;
+
+function clientIp(req: NextRequest) {
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0]?.trim() || null;
+  return req.headers.get('x-real-ip') || null;
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session.isAuthenticated) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const merchantId = session.uid;
+  const ip = clientIp(req) || '';
+  const userAgent = req.headers.get('user-agent') || '';
+
+  let body: { confirmedRead?: boolean; signedName?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const signedName = (body.signedName || '').trim();
+  if (!body.confirmedRead) {
+    return NextResponse.json({ error: 'You must confirm that you have read the agreement.' }, { status: 400 });
+  }
+  if (!signedName) {
+    return NextResponse.json({ error: 'Typed signature is required.' }, { status: 400 });
+  }
+
+  const supabase = getSupabaseDbClient();
+
+  const { data: existing } = await supabase
+    .from('merchant_agreements')
+    .select('id')
+    .eq('merchant_id', merchantId)
+    .eq('agreement_version', AGREEMENT_VERSION)
+    .maybeSingle();
+
+  if (existing) {
+    return NextResponse.json({ error: 'Agreement already signed for this version.' }, { status: 409 });
+  }
+
+  const { data: vendor, error: vErr } = await supabase
+    .from('vendors')
+    .select('id, owner_name, name, phone, address, preferred_language')
+    .eq('id', merchantId)
+    .single();
+
+  if (vErr || !vendor) {
+    return NextResponse.json({ error: 'Merchant profile not found.' }, { status: 404 });
+  }
+
+  const ownerName = String(vendor.owner_name || '').trim();
+  if (!signatureMatchesLegalName(ownerName, signedName)) {
+    await supabase.from('agreement_audit_logs').insert({
+      merchant_id: merchantId,
+      action: 'agreement_sign_rejected',
+      details: { reason: 'signature_mismatch' },
+      ip_address: ip,
+      user_agent: userAgent,
+    });
+    return NextResponse.json(
+      { error: 'Typed name must closely match your registered owner name.' },
+      { status: 400 }
+    );
+  }
+
+  const lang = resolveAgreementLanguage(vendor.preferred_language);
+  const phone = String(vendor.phone || '');
+  const address = String(vendor.address || '');
+  const shopName = String(vendor.name || '');
+  const signedAt = new Date();
+  const signedAtIso = signedAt.toISOString();
+  const dateFormatted = new Intl.DateTimeFormat('en-IN', { dateStyle: 'long', timeZone: 'Asia/Kolkata' }).format(
+    signedAt
+  );
+  const signedAtDisplay = signedAt.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    dateStyle: 'long',
+    timeStyle: 'short',
+  });
+
+  const vars = {
+    ownerName,
+    shopName,
+    phone,
+    address,
+    dateFormatted,
+  };
+
+  const template = buildAgreementForLanguage(lang, vars);
+  const canonical = buildCanonicalAgreementString({
+    agreementVersion: AGREEMENT_VERSION,
+    language: lang,
+    vars,
+    template,
+    signedName,
+    signedAtIso,
+    whatsappConsentConfirmed: true,
+  });
+  const agreementHash = createHash('sha256').update(canonical, 'utf8').digest('hex');
+
+  const langLabel = lang === 'hi' ? 'Hindi' : lang === 'mr' ? 'Marathi' : 'English';
+
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await generateAgreementPdfFromTemplate({
+      template,
+      vars,
+      signedName,
+      signedAtDisplay,
+      languageLabel: langLabel,
+    });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('[agreement/sign] PDF generation failed:', message);
+    await supabase.from('agreement_audit_logs').insert({
+      merchant_id: merchantId,
+      action: 'agreement_pdf_failed',
+      details: { message },
+      ip_address: ip,
+      user_agent: userAgent,
+    });
+    return NextResponse.json({ error: 'Failed to generate agreement PDF. Please try again.' }, { status: 500 });
+  }
+
+  const objectPath = `${merchantId}/agreement_${AGREEMENT_VERSION}.pdf`;
+  const { error: uploadError } = await supabase.storage
+    .from('merchant-agreements')
+    .upload(objectPath, pdfBuffer, {
+      contentType: 'application/pdf',
+      upsert: true,
+    });
+
+  if (uploadError) {
+    console.error('[agreement/sign] Storage upload failed:', uploadError.message);
+    await supabase.from('agreement_audit_logs').insert({
+      merchant_id: merchantId,
+      action: 'agreement_upload_failed',
+      details: { message: uploadError.message },
+      ip_address: ip,
+      user_agent: userAgent,
+    });
+    return NextResponse.json({ error: 'Failed to store agreement PDF.' }, { status: 500 });
+  }
+
+  const { error: insertErr } = await supabase.from('merchant_agreements').insert({
+    merchant_id: merchantId,
+    agreement_version: AGREEMENT_VERSION,
+    language: lang,
+    signed_name: signedName,
+    signed_at: signedAtIso,
+    ip_address: ip,
+    pdf_url: objectPath,
+    agreement_hash: agreementHash,
+  });
+
+  if (insertErr) {
+    console.error('[agreement/sign] DB insert failed:', insertErr.message);
+    await supabase.storage.from('merchant-agreements').remove([objectPath]).catch(() => {});
+    return NextResponse.json({ error: 'Failed to save agreement record.' }, { status: 500 });
+  }
+
+  await supabase.from('agreement_audit_logs').insert({
+    merchant_id: merchantId,
+    action: 'agreement_signed',
+    details: {
+      agreementVersion: AGREEMENT_VERSION,
+      language: lang,
+      agreementHash,
+      pdfPath: objectPath,
+    },
+    ip_address: ip,
+    user_agent: userAgent,
+  });
+
+  const phoneE164 = normalizePhoneE164(phone);
+
+  void sendMerchantWelcomeAfterVerification({
+    merchantId,
+    phoneE164,
+    ownerName,
+  }).catch((e: unknown) => {
+    console.warn('[agreement/sign] welcome WhatsApp task failed:', e instanceof Error ? e.message : e);
+  });
+
+  return NextResponse.json({ success: true, redirect: '/dashboard' });
+}

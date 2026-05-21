@@ -1,0 +1,70 @@
+/**
+ * Supabase Server Client
+ * For server-side operations (API routes, Server Components)
+ */
+
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import type { Database } from './types'
+
+/**
+ * Create Supabase client for Server Components
+ * Uses user's auth context
+ * NOTE: Only use in Server Components, not in API routes
+ */
+export async function createServerSupabaseClient() {
+  // Dynamic import to avoid build errors
+  const { cookies } = await import('next/headers')
+  const cookieStore = await cookies()
+
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder',
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch (error) {
+            // Cookie setting can fail in Server Components
+            // This is expected and safe to ignore
+          }
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: '', ...options })
+          } catch (error) {
+            // Cookie removal can fail in Server Components
+            // This is expected and safe to ignore
+          }
+        },
+      },
+    }
+  )
+}
+
+/**
+ * Create Supabase client with Service Role key
+ * For admin operations (bypasses RLS)
+ * USE WITH CAUTION - only in secure server contexts
+ * Safe to use in API routes
+ */
+export function createServiceSupabaseClient() {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
+  }
+
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder',
+    {
+      cookies: {
+        get() { return undefined },
+        set() {},
+        remove() {},
+      },
+    }
+  )
+}
