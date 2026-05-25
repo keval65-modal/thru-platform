@@ -16,6 +16,10 @@ import {
   getSupabaseDbClient,
 } from '@/lib/supabase-auth';
 import { sendMerchantWelcomeAfterVerification } from '@/services/whatsapp/sendMerchantWelcomeAfterVerification';
+import {
+  deleteIncompleteRegistration,
+  merchantHasSignedAgreement,
+} from '@/lib/incomplete-registration';
 import { adminAuth } from '@/lib/firebase-admin';
 
 const timeOptions = [
@@ -211,30 +215,23 @@ export async function handleSignupSupabase(
 
         if (existingUser) {
           console.log('⚠️ User already exists:', existingUser.id);
-          // Check if they have a vendor profile
-          const { data: vendorProfile, error: profileError } = await supabaseAdmin
-            .from('vendors')
-            .select('id')
-            .eq('id', existingUser.id)
-            .single();
-          
-          if (vendorProfile && !profileError) {
-            console.log('✅ User has complete vendor profile');
+          const signed = await merchantHasSignedAgreement(supabaseAdmin, existingUser.id);
+          if (signed) {
+            console.log('✅ User already completed agreement — treat as login');
             const cookieStore = cookies();
             cookieStore.set('thru_vendor_auth_token', existingUser.id, {
               httpOnly: true,
               secure: process.env.NODE_ENV === 'production',
-              maxAge: 60 * 60 * 24 * 7, // 1 week
+              maxAge: 60 * 60 * 24 * 7,
               path: '/',
             });
             return {
               success: true,
               message: 'Account already exists. Logging you in...',
             };
-          } else {
-            console.log('⚠️ User exists but profile is incomplete - allowing signup to complete');
-            // Continue with signup - this will likely fail, but we'll handle it better
           }
+          console.log('🧹 Removing incomplete registration (no signed agreement)');
+          await deleteIncompleteRegistration(existingUser.id);
         } else {
           console.log('✅ No existing user found - proceeding with signup');
         }
@@ -287,31 +284,23 @@ export async function handleSignupSupabase(
             });
 
             if (existingUser) {
-              // Check if they have a vendor profile
-              const { data: vendorProfile, error: profileError } = await supabaseAdmin
-                .from('vendors')
-                .select('id')
-                .eq('id', existingUser.id)
-                .single();
-              
-              if (vendorProfile && !profileError) {
-                console.log('❌ User exists and has complete vendor profile');
+              const signed = await merchantHasSignedAgreement(supabaseAdmin, existingUser.id);
+              if (signed) {
+                console.log('❌ User exists and completed agreement');
                 const cookieStore = cookies();
                 cookieStore.set('thru_vendor_auth_token', existingUser.id, {
                   httpOnly: true,
                   secure: process.env.NODE_ENV === 'production',
-                  maxAge: 60 * 60 * 24 * 7, // 1 week
+                  maxAge: 60 * 60 * 24 * 7,
                   path: '/',
                 });
                 return {
                   success: true,
                   message: 'Account already exists. Logging you in...',
                 };
-              } else {
-                // User exists but no profile - we can create the profile for them
-                console.log('✅ User exists but no profile found - will create profile for existing user');
-                uid = existingUser.id;
               }
+              console.log('🧹 Removing incomplete registration before retry');
+              await deleteIncompleteRegistration(existingUser.id);
             } else {
               // Couldn't find existing user - this is strange, return error
               console.error('❌ Error says user exists but we cannot find them');
@@ -410,8 +399,8 @@ export async function handleSignupSupabase(
       closing_time: closingTimeValue,
       weekly_close_on: vendorData.weeklyCloseOn,
       image_url: shopImageUrl,
-      is_active: true,
-      is_active_on_thru: true,
+      is_active: false,
+      is_active_on_thru: false,
       grocery_enabled: true,
       always_open: vendorData.alwaysOpen,
       preferred_language: preferredLanguage,

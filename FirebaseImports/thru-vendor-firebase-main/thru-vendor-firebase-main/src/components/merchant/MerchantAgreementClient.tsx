@@ -50,6 +50,46 @@ export function MerchantAgreementClient({
   const [confirmedRead, setConfirmedRead] = React.useState(false);
   const [signedName, setSignedName] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [cancelling, setCancelling] = React.useState(false);
+
+  const handleCancelRegistration = async () => {
+    if (
+      !window.confirm(
+        'Cancel registration? Your shop account will be removed and you can sign up again with the same phone number.'
+      )
+    ) {
+      return;
+    }
+    setCancelling(true);
+    try {
+      const res = await fetch('/api/merchant/registration/abandon', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not cancel',
+          description: data.error || 'Please try again or contact support.',
+        });
+        setCancelling(false);
+        return;
+      }
+      toast({
+        title: 'Registration cancelled',
+        description: 'You can sign up again when ready.',
+      });
+      router.push(typeof data.redirect === 'string' ? data.redirect : '/signup');
+    } catch (e: unknown) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Network error',
+      });
+      setCancelling(false);
+    }
+  };
 
   const handleContinue = async () => {
     if (!confirmedRead) {
@@ -149,15 +189,27 @@ export function MerchantAgreementClient({
                 Registered owner name: <span className="font-medium text-foreground">{ownerName}</span>
               </p>
             </div>
-            <Button
-              type="button"
-              className="w-full sm:w-auto"
-              disabled={submitting}
-              onClick={handleContinue}
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Continue
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                type="button"
+                className="w-full sm:w-auto"
+                disabled={submitting || cancelling}
+                onClick={handleContinue}
+              >
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Continue
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                disabled={submitting || cancelling}
+                onClick={handleCancelRegistration}
+              >
+                {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Cancel registration
+              </Button>
+            </div>
           </div>
 
           <p className="text-center text-xs text-muted-foreground">
@@ -167,9 +219,8 @@ export function MerchantAgreementClient({
         </CardContent>
       </Card>
       <p className="mt-6 text-center text-xs text-muted-foreground">
-        <Link href="/login" className="font-medium text-primary hover:underline">
-          Back to login
-        </Link>
+        Leaving without signing? Use <span className="font-medium">Cancel registration</span> so you can sign up
+        again with the same phone number.
       </p>
     </main>
   );

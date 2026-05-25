@@ -3,8 +3,9 @@
 
 import { z } from 'zod';
 import { cookies } from 'next/headers';
-import { signInVendor, getVendorProfile } from '@/lib/supabase-auth';
+import { signInVendor, getVendorProfile, getSupabaseDbClient } from '@/lib/supabase-auth';
 import { validateUserForSession } from '@/lib/auth';
+import { merchantHasSignedAgreement } from '@/lib/incomplete-registration';
 
 const loginFormSchema = z.object({
   identifier: z.string().trim().min(1, { message: 'Email or phone number is required.' }),
@@ -61,7 +62,21 @@ export async function handleLogin(
     const { success: profileSuccess, vendor, error: profileError } = await getVendorProfile(user.id);
     if (!profileSuccess || !vendor) {
       console.error('[Login Action] Vendor profile missing:', profileError);
-      return { success: false, error: profileError || 'Vendor profile not found. Please complete signup.' };
+      return {
+        success: false,
+        error:
+          'Registration was not completed. Please sign up again with the same phone number to finish setup.',
+      };
+    }
+
+    const db = getSupabaseDbClient();
+    const signed = await merchantHasSignedAgreement(db, user.id);
+    if (!signed) {
+      return {
+        success: false,
+        error:
+          'You have not signed the merchant agreement yet. Please sign up again to continue, or use Cancel on the agreement page if you want to start over.',
+      };
     }
 
     const cookieStore = cookies();

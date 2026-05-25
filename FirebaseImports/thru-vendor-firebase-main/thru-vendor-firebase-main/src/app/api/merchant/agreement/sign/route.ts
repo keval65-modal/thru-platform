@@ -182,6 +182,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save agreement record.' }, { status: 500 });
   }
 
+  const { error: activateErr } = await supabase
+    .from('vendors')
+    .update({
+      is_active: true,
+      is_active_on_thru: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', merchantId);
+
+  if (activateErr) {
+    console.error('[agreement/sign] Failed to activate vendor:', activateErr.message);
+  }
+
   await supabase.from('agreement_audit_logs').insert({
     merchant_id: merchantId,
     action: 'agreement_signed',
