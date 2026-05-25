@@ -130,6 +130,7 @@ export async function POST(req: NextRequest) {
       signedName,
       signedAtDisplay,
       languageLabel: langLabel,
+      agreementLanguage: lang,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);

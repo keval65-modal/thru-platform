@@ -20,7 +20,11 @@ const nextConfig = {
         'puppeteer',
         'puppeteer-core',
         '@sparticuz/chromium',
+        '@pdf-lib/fontkit',
     ],
+    outputFileTracingIncludes: {
+        '/api/merchant/agreement/sign': ['./public/fonts/agreement/**/*'],
+    },
     typescript: {
         ignoreBuildErrors: true, // Temporarily ignore TypeScript errors to get deployment working
     },
