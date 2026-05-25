@@ -36,6 +36,7 @@ Default dev port: **9003** (`npm run dev`).
 
 Run in Supabase SQL editor, in order as needed:
 
+- `src/lib/supabase/vendor-images-schema.sql` (shop image bucket — fixes signup "Bucket not found")
 - `src/lib/supabase/merchant-agreements-schema.sql`
 - `src/lib/supabase/whatsapp-messages-schema.sql`
 - `src/lib/supabase/onboarding-schema.sql`

@@ -8,51 +8,56 @@ import {
   ownerFirstName,
 } from '@/services/whatsapp/waba-utils';
 
-/** WABA-approved template sent once after phone verification at signup (and retry after sign if failed). */
-const WELCOME_TEMPLATE = 'merchant_welcome';
+/** WABA-approved template sent once after merchant signs the partner agreement. */
+const ONBOARDING_COMPLETE_TEMPLATE = 'merchant_onboarding_complete';
+
+function onboardingCompleteTemplateName(): string {
+  return (
+    process.env.META_WHATSAPP_ONBOARDING_COMPLETE_TEMPLATE?.trim() ||
+    ONBOARDING_COMPLETE_TEMPLATE
+  );
+}
 
 /**
- * After successful phone OTP + vendor profile creation: send `merchant_welcome` once,
- * only when `vendors.phone_verified` is true. Reserves a DB row first to prevent duplicates.
- * Does not throw; logs errors.
+ * Body variables for the onboarding-complete template (order must match Meta approval).
+ * Default: single {{1}} = merchant first name. Set META_WHATSAPP_ONBOARDING_COMPLETE_INCLUDE_URL=true
+ * for two variables: name + dashboard URL.
  */
-export async function sendMerchantWelcomeAfterVerification(input: {
+function onboardingCompleteParameters(ownerName: string): string[] {
+  const first = ownerFirstName(ownerName);
+  if (process.env.META_WHATSAPP_ONBOARDING_COMPLETE_INCLUDE_URL === 'true') {
+    return [first, appUrl('/dashboard')];
+  }
+  return [first];
+}
+
+/**
+ * After agreement sign: send the WABA-approved onboarding-complete template once per merchant.
+ * Logs to whatsapp_messages; does not throw.
+ */
+export async function sendMerchantOnboardingComplete(input: {
   merchantId: string;
   phoneE164: string;
   ownerName: string;
 }): Promise<void> {
   const db = getSupabaseDbClient();
   const phoneE164 = normalizePhoneE164(input.phoneE164);
+  const templateName = onboardingCompleteTemplateName();
 
-  console.log('[merchant-welcome] Start', {
+  console.log('[merchant-onboarding-complete] Start', {
     merchantId: input.merchantId,
     phoneSuffix: phoneE164.slice(-4),
-    template: WELCOME_TEMPLATE,
+    template: templateName,
   });
 
   try {
-    const { data: vendor, error: vErr } = await db
-      .from('vendors')
-      .select('id, phone_verified')
-      .eq('id', input.merchantId)
-      .maybeSingle();
-
-    if (vErr) {
-      console.error('[merchant-welcome] Failed to load vendor:', vErr.message);
-      return;
-    }
-    if (vendor && vendor.phone_verified === false) {
-      console.warn('[merchant-welcome] Skip: phone_verified is false for merchant', input.merchantId);
-      return;
-    }
-
     let rowId: string | null = null;
     const { data: reserved, error: insErr } = await db
       .from('whatsapp_messages')
       .insert({
         merchant_id: input.merchantId,
         phone_number: phoneE164,
-        template_name: WELCOME_TEMPLATE,
+        template_name: templateName,
         status: 'pending',
         meta_message_id: null,
         api_response: null,
@@ -65,7 +70,7 @@ export async function sendMerchantWelcomeAfterVerification(input: {
         .from('whatsapp_messages')
         .select('id, status')
         .eq('merchant_id', input.merchantId)
-        .eq('template_name', WELCOME_TEMPLATE)
+        .eq('template_name', templateName)
         .maybeSingle();
 
       if (prior?.id && (prior.status === 'failed' || prior.status === 'pending')) {
@@ -74,17 +79,23 @@ export async function sendMerchantWelcomeAfterVerification(input: {
           .from('whatsapp_messages')
           .update({ status: 'pending', meta_message_id: null, api_response: null })
           .eq('id', rowId);
-        console.log('[merchant-welcome] Retrying prior row', {
+        console.log('[merchant-onboarding-complete] Retrying prior row', {
           merchantId: input.merchantId,
           priorStatus: prior.status,
         });
       } else {
-        console.warn('[merchant-welcome] Skip duplicate: welcome already recorded for merchant', input.merchantId);
+        console.warn(
+          '[merchant-onboarding-complete] Skip duplicate for merchant',
+          input.merchantId
+        );
         return;
       }
     }
     if (insErr) {
-      console.warn('[merchant-welcome] whatsapp_messages insert failed (continuing send):', insErr.message);
+      console.warn(
+        '[merchant-onboarding-complete] whatsapp_messages insert failed (continuing send):',
+        insErr.message
+      );
     } else if (reserved?.id) {
       rowId = reserved.id as string;
     }
@@ -93,13 +104,13 @@ export async function sendMerchantWelcomeAfterVerification(input: {
     try {
       result = await sendTemplateMessage({
         to: phoneE164,
-        templateName: WELCOME_TEMPLATE,
+        templateName,
         languageCode: defaultTemplateLanguage(),
-        parameters: [ownerFirstName(input.ownerName), appUrl('/merchant/agreement')],
+        parameters: onboardingCompleteParameters(input.ownerName),
       });
     } catch (sendErr: unknown) {
       const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
-      console.error('[merchant-welcome] sendTemplateMessage threw:', msg);
+      console.error('[merchant-onboarding-complete] sendTemplateMessage threw:', msg);
       if (rowId) {
         await db
           .from('whatsapp_messages')
@@ -127,24 +138,20 @@ export async function sendMerchantWelcomeAfterVerification(input: {
         .eq('id', rowId);
 
       if (upErr) {
-        console.error('[merchant-welcome] Failed to update whatsapp_messages:', upErr.message, { rowId });
+        console.error('[merchant-onboarding-complete] Failed to update whatsapp_messages:', upErr.message);
       }
     }
 
     if (!result.ok) {
-      console.error('[merchant-welcome] Template send failed', {
+      console.error('[merchant-onboarding-complete] Template send failed', {
         merchantId: input.merchantId,
+        templateName,
         httpStatus: result.status,
         data: result.data,
-      });
-    } else {
-      console.log('[merchant-welcome] Sent', {
-        merchantId: input.merchantId,
-        metaMessageId: metaId,
       });
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error('[merchant-welcome] Unexpected error:', msg);
+    console.error('[merchant-onboarding-complete] Unexpected error:', msg);
   }
 }

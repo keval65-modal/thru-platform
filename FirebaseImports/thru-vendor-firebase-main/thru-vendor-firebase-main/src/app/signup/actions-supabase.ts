@@ -453,13 +453,19 @@ export async function handleSignupSupabase(
     const phoneForWelcome = submittedPhone.startsWith('+')
       ? submittedPhone
       : `+${submittedPhone.replace(/^\+/, '')}`;
-    void sendMerchantWelcomeAfterVerification({
+    console.log('[signup] Sending merchant_welcome WhatsApp (awaiting completion)...', {
       merchantId: uid,
-      phoneE164: phoneForWelcome,
-      ownerName: vendorData.ownerName,
-    }).catch((e: unknown) => {
-      console.error('[signup] merchant welcome WhatsApp task failed:', e instanceof Error ? e.message : e);
     });
+    try {
+      await sendMerchantWelcomeAfterVerification({
+        merchantId: uid,
+        phoneE164: phoneForWelcome,
+        ownerName: vendorData.ownerName,
+      });
+      console.log('[signup] merchant_welcome WhatsApp finished');
+    } catch (e: unknown) {
+      console.error('[signup] merchant welcome WhatsApp task failed:', e instanceof Error ? e.message : e);
+    }
 
     try {
       const headerList = await headers();

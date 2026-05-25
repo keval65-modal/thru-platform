@@ -445,6 +445,9 @@ export async function createVendorProfile(vendorData: any) {
   return { success: true, vendor: data, error: null };
 }
 
+/** Supabase Storage bucket for shop images (signup + profile). */
+export const VENDOR_IMAGES_BUCKET = 'vendor-images';
+
 // Upload image to Supabase Storage
 export async function uploadVendorImage(
   vendorId: string,
@@ -453,32 +456,40 @@ export async function uploadVendorImage(
   const supabase = getSupabaseDbClient();
   
   try {
-    const fileExt = imageFile.name.split('.').pop();
+    const fileExt = imageFile.name.split('.').pop() || 'jpg';
     const fileName = `${vendorId}/shop_image.${fileExt}`;
     const filePath = `vendor_shop_images/${fileName}`;
     
-    console.log('📸 Uploading image to Supabase Storage:', filePath);
+    console.log('📸 Uploading image to Supabase Storage:', {
+      bucket: VENDOR_IMAGES_BUCKET,
+      filePath,
+    });
     
     // Convert File to ArrayBuffer
     const arrayBuffer = await imageFile.arrayBuffer();
     const buffer = new Uint8Array(arrayBuffer);
     
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
-      .from('vendor-images')
+    const { error } = await supabase.storage
+      .from(VENDOR_IMAGES_BUCKET)
       .upload(filePath, buffer, {
-        contentType: imageFile.type,
+        contentType: imageFile.type || 'image/jpeg',
         upsert: true,
       });
     
     if (error) {
+      const hint =
+        error.message?.toLowerCase().includes('bucket') ||
+        error.message?.toLowerCase().includes('not found')
+          ? ` Run src/lib/supabase/vendor-images-schema.sql in the Supabase SQL editor (bucket "${VENDOR_IMAGES_BUCKET}").`
+          : '';
       console.error('❌ Error uploading image:', error.message);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message + hint };
     }
     
     // Get public URL
     const { data: { publicUrl } } = supabase.storage
-      .from('vendor-images')
+      .from(VENDOR_IMAGES_BUCKET)
       .getPublicUrl(filePath);
     
     console.log('✅ Image uploaded successfully:', publicUrl);

@@ -11,7 +11,7 @@ import { buildCanonicalAgreementString } from '@/lib/agreement-canon';
 import { generateAgreementPdfFromTemplate } from '@/lib/agreement-pdf-lib';
 import { signatureMatchesLegalName } from '@/lib/agreement-signing-utils';
 import { normalizePhoneE164 } from '@/lib/phone-e164';
-import { sendMerchantWelcomeAfterVerification } from '@/services/whatsapp/sendMerchantWelcomeAfterVerification';
+import { sendMerchantOnboardingComplete } from '@/services/whatsapp/sendMerchantOnboardingComplete';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -196,13 +196,22 @@ export async function POST(req: NextRequest) {
 
   const phoneE164 = normalizePhoneE164(phone);
 
-  void sendMerchantWelcomeAfterVerification({
+  console.log('[agreement/sign] Sending merchant_onboarding_complete WhatsApp (awaiting)...', {
     merchantId,
-    phoneE164,
-    ownerName,
-  }).catch((e: unknown) => {
-    console.warn('[agreement/sign] welcome WhatsApp task failed:', e instanceof Error ? e.message : e);
   });
+  try {
+    await sendMerchantOnboardingComplete({
+      merchantId,
+      phoneE164,
+      ownerName,
+    });
+    console.log('[agreement/sign] onboarding-complete WhatsApp finished');
+  } catch (e: unknown) {
+    console.warn(
+      '[agreement/sign] onboarding-complete WhatsApp task failed:',
+      e instanceof Error ? e.message : e
+    );
+  }
 
   return NextResponse.json({ success: true, redirect: '/dashboard' });
 }

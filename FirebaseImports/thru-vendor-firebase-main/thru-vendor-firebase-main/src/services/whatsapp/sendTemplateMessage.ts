@@ -1,8 +1,8 @@
 /**
- * WhatsApp Cloud API (Meta) — reusable template sends for onboarding, orders,
- * agreements, and operational notifications. Uses fetch only.
+ * WhatsApp Cloud API (Meta WABA) — approved template messages only.
+ * Do not send free-form text; use pre-approved templates from Business Manager.
  *
- * Env (Vercel): META_ACCESS_TOKEN, META_PHONE_NUMBER_ID
+ * Env: META_ACCESS_TOKEN, META_PHONE_NUMBER_ID
  */
 
 export const META_WHATSAPP_GRAPH_VERSION = 'v22.0';
@@ -149,6 +149,12 @@ export async function sendTemplateMessage(
 
   const url = `https://graph.facebook.com/${META_WHATSAPP_GRAPH_VERSION}/${phoneNumberId}/messages`;
   const payload = buildRequestPayload({ ...input, to: toDigits });
+
+  console.log('[whatsapp-cloud] Sending template', {
+    template: input.templateName,
+    locale: input.languageCode,
+    toSuffix: toDigits.slice(-4),
+  });
 
   try {
     const res = await fetch(url, {

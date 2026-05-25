@@ -1,218 +1,98 @@
-# 📱 WhatsApp Messaging Setup
+# WhatsApp (Meta WABA) setup
 
-This guide explains how to configure WhatsApp messaging for vendor registration welcome messages.
+All vendor WhatsApp messages are sent through the **WhatsApp Business Account (WABA)** via the **Meta Cloud API**, using **pre-approved message templates** only. Free-form session messages are not used for onboarding.
 
-## Overview
+Legacy providers (OpenClaw, Twilio) have been removed from this app.
 
-When a vendor registers through the signup form, they automatically receive a WhatsApp welcome message with the following content:
+## Approved templates in use
 
+| Template name | When it is sent | Body variables (in order) |
+|---------------|-----------------|---------------------------|
+| `merchant_welcome` | After signup (phone OTP verified + vendor profile created) | 1. Merchant first name 2. Agreement URL (`{NEXT_PUBLIC_APP_URL}/merchant/agreement`) |
+| `merchant_onboarding_complete` | After merchant signs the partner agreement (v1) | 1. Merchant first name (default). Optional 2nd: dashboard URL — see env below |
+
+Create and **approve** both templates in [Meta Business Manager](https://business.facebook.com/) → WhatsApp → Message templates. The locale must match `META_WHATSAPP_DEFAULT_LOCALE` (default `en_US`).
+
+## Environment variables (Vercel / `.env.local`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `META_ACCESS_TOKEN` | Yes | Permanent or system user token with `whatsapp_business_messaging` |
+| `META_PHONE_NUMBER_ID` | Yes | Phone number ID from WhatsApp → API setup |
+| `NEXT_PUBLIC_APP_URL` | Yes (prod) | e.g. `https://merchant.kiptech.in` — used in template URLs |
+| `META_WHATSAPP_DEFAULT_LOCALE` | No | Template language code (default `en_US`) |
+| `META_WHATSAPP_ONBOARDING_COMPLETE_TEMPLATE` | No | Override template name (default `merchant_onboarding_complete`) |
+| `META_WHATSAPP_ONBOARDING_COMPLETE_INCLUDE_URL` | No | Set to `true` if the onboarding-complete template has **two** body variables (name + dashboard URL) |
+
+## Code layout
+
+| File | Role |
+|------|------|
+| `src/services/whatsapp/sendTemplateMessage.ts` | Low-level Meta Graph API template send |
+| `src/services/whatsapp/sendMerchantWelcomeAfterVerification.ts` | Signup → `merchant_welcome` |
+| `src/services/whatsapp/sendMerchantOnboardingComplete.ts` | Agreement sign → `merchant_onboarding_complete` |
+| `src/lib/supabase/whatsapp-messages-schema.sql` | Outbound log + dedupe per merchant per template |
+
+## Database
+
+Run in Supabase SQL editor (as needed):
+
+- `src/lib/supabase/vendor-images-schema.sql` — shop images at signup
+- `src/lib/supabase/whatsapp-messages-schema.sql` — outbound message log
+
+Check sends:
+
+```sql
+select merchant_id, template_name, status, meta_message_id, api_response, created_at
+from whatsapp_messages
+order by created_at desc
+limit 20;
 ```
-Dear <Owner Name> ji, thank you for enrolling your <Shop Category> <Shop Name> With Thru! We are excited to have you on board as part of the Thru Vendors Program. We are launching soon and we will update you as soon as we're up and running. In case of any queries or suggestions, please reach out to us on this same number. Thank you again!
-```
-
-## Supported Providers
-
-The WhatsApp service supports multiple providers:
-
-1. **OpenClaw Bot** (Default - Recommended)
-2. **Twilio WhatsApp API** (Alternative)
-3. **WhatsApp Business API (Meta)** (Alternative)
-
-## Option 1: OpenClaw Bot Setup (Recommended)
-
-### Step 1: Configure OpenClaw Bot
-
-1. Ensure your OpenClaw bot is set up and linked to your WhatsApp number
-2. Get your OpenClaw API endpoint URL
-3. Get your API key or authentication token (if required)
-4. Get your Bot ID (if required)
-
-### Step 2: Configure Environment Variables
-
-Add these to your `.env.local` or production environment:
-
-```bash
-# WhatsApp Provider
-WHATSAPP_PROVIDER=openclaw
-
-# OpenClaw Bot Configuration
-OPENCLAW_API_URL=https://your-openclaw-api-endpoint.com/api/send-message
-OPENCLAW_API_KEY=your_api_key_here  # Optional, if authentication is required
-OPENCLAW_BOT_ID=your_bot_id_here    # Optional, if bot ID is required
-```
-
-### Step 3: API Request Format
-
-The service will send a POST request to your OpenClaw API endpoint with the following format:
-
-```json
-{
-  "to": "+919876543210",
-  "message": "Dear John ji, thank you for enrolling...",
-  "botId": "your_bot_id"  // Only if OPENCLAW_BOT_ID is set
-}
-```
-
-### Step 4: Expected Response Format
-
-OpenClaw API should return a JSON response indicating success:
-
-```json
-{
-  "success": true,
-  "id": "message_id_123",
-  "message": "Message sent successfully"
-}
-```
-
-Or in case of error:
-
-```json
-{
-  "error": "Error message",
-  "message": "Error description"
-}
-```
-
-### Step 5: Test
-
-1. Register a new vendor through the signup form
-2. Check the vendor's WhatsApp number for the welcome message
-3. Check server logs for confirmation: `✅ WhatsApp message sent via OpenClaw bot`
-
-## Option 2: Twilio Setup (Alternative)
-
-### Step 1: Install Twilio Package
-
-```bash
-npm install twilio
-```
-
-### Step 2: Get Twilio Credentials
-
-1. Sign up for a Twilio account at https://www.twilio.com/
-2. Go to the Twilio Console Dashboard
-3. Get your **Account SID** and **Auth Token**
-4. Enable WhatsApp in your Twilio account:
-   - Go to Messaging → Try it out → Send a WhatsApp message
-   - Follow the setup wizard to get a WhatsApp-enabled phone number
-
-### Step 3: Configure Environment Variables
-
-Add these to your `.env.local` or production environment:
-
-```bash
-# WhatsApp Provider (use 'twilio' or 'whatsapp-api')
-WHATSAPP_PROVIDER=twilio
-
-# Twilio Credentials
-TWILIO_ACCOUNT_SID=your_account_sid_here
-TWILIO_AUTH_TOKEN=your_auth_token_here
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886  # Your Twilio WhatsApp number (format: whatsapp:+1234567890)
-```
-
-### Step 4: Test
-
-1. Register a new vendor through the signup form
-2. Check the vendor's WhatsApp number for the welcome message
-3. Check server logs for confirmation: `✅ WhatsApp welcome message sent to +919876543210`
-
-## Option 2: WhatsApp Business API (Meta) Setup
-
-### Step 1: Get Meta Business Account
-
-1. Create a Meta Business account at https://business.facebook.com/
-2. Set up a WhatsApp Business Account
-3. Get your **Phone Number ID** and **Access Token**
-
-### Step 2: Configure Environment Variables
-
-Add these to your `.env.local` or production environment:
-
-```bash
-# WhatsApp Provider
-WHATSAPP_PROVIDER=whatsapp-api
-
-# WhatsApp Business API Credentials
-WHATSAPP_API_TOKEN=your_access_token_here
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id_here
-WHATSAPP_API_VERSION=v21.0  # Optional, defaults to v21.0
-```
-
-## Environment Variables Summary
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `WHATSAPP_PROVIDER` | No | Provider to use: `openclaw`, `twilio`, or `whatsapp-api` | `openclaw` |
-| `OPENCLAW_API_URL` | Yes (if OpenClaw) | OpenClaw bot API endpoint URL | `https://api.openclaw.com/send` |
-| `OPENCLAW_API_KEY` | No (if OpenClaw) | OpenClaw API key for authentication | `your_api_key` |
-| `OPENCLAW_BOT_ID` | No (if OpenClaw) | OpenClaw bot ID | `bot_123456` |
-| `TWILIO_ACCOUNT_SID` | Yes (if Twilio) | Twilio Account SID | `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
-| `TWILIO_AUTH_TOKEN` | Yes (if Twilio) | Twilio Auth Token | `your_auth_token` |
-| `TWILIO_WHATSAPP_FROM` | Yes (if Twilio) | Twilio WhatsApp number | `whatsapp:+14155238886` |
-| `WHATSAPP_API_TOKEN` | Yes (if Meta) | Meta WhatsApp API Access Token | `your_access_token` |
-| `WHATSAPP_PHONE_NUMBER_ID` | Yes (if Meta) | Meta Phone Number ID | `123456789012345` |
-| `WHATSAPP_API_VERSION` | No | Meta API version | `v21.0` |
-
-## How It Works
-
-1. Vendor fills out the registration form at `/signup`
-2. Form data is validated and vendor account is created
-3. Vendor is saved to Firebase and Supabase
-4. **WhatsApp welcome message is sent automatically** (non-blocking - signup succeeds even if message fails)
-5. Vendor is redirected to the dashboard
-
-## Error Handling
-
-- If WhatsApp messaging fails, the vendor signup **still succeeds**
-- Errors are logged to the console for debugging
-- The vendor can still use the platform even if the welcome message wasn't sent
-
-## Troubleshooting
-
-### Error: "WhatsApp service not configured"
-- **Cause**: Missing environment variables
-- **Fix**: Add all required environment variables for your chosen provider
-
-### Error: "Twilio package not installed"
-- **Cause**: `twilio` package not installed
-- **Fix**: Run `npm install twilio`
-
-### Error: "Invalid phone number format"
-- **Cause**: Phone number not in E.164 format
-- **Fix**: Ensure phone numbers include country code with `+` prefix (e.g., `+919876543210`)
-
-### Messages not being received
-- Check Twilio/Meta dashboard for message status
-- Verify phone number format is correct
-- Check server logs for detailed error messages
-- Ensure WhatsApp is enabled in your provider account
-
-## Cost Considerations
-
-### Twilio
-- **WhatsApp pricing**: Varies by country
-- **India**: ~₹0.50-1.00 per message
-- **Free tier**: Limited test messages available
-
-### WhatsApp Business API
-- **Free tier**: 1,000 conversations/month
-- **Paid**: Varies by conversation type
-- Check Meta's pricing page for current rates
 
 ## Testing
 
-To test without sending real messages:
+1. Configure env vars on **Production** in [thru-vendor-dashboard](https://vercel.com/keval65-modals-projects/thru-vendor-dashboard).
+2. Add test phone numbers in Meta if the WABA is still in development mode.
+3. **Welcome:** complete a new signup at `/signup` → expect `merchant_welcome` and a row in `whatsapp_messages`.
+4. **Onboarding complete:** sign `/merchant/agreement` → expect `merchant_onboarding_complete` and a second row (different `template_name`).
 
-1. Use Twilio's test credentials (if available)
-2. Use a test phone number in development
-3. Check server logs for message send confirmations
-4. Verify message format using the `formatVendorWelcomeMessage` function
+## Direct API test (optional)
 
-## Support
+```bash
+curl -X POST "https://graph.facebook.com/v22.0/YOUR_PHONE_NUMBER_ID/messages" \
+  -H "Authorization: Bearer YOUR_META_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messaging_product": "whatsapp",
+    "to": "919876543210",
+    "type": "template",
+    "template": {
+      "name": "merchant_welcome",
+      "language": { "code": "en_US" },
+      "components": [{
+        "type": "body",
+        "parameters": [
+          { "type": "text", "text": "Ravi" },
+          { "type": "text", "text": "https://merchant.kiptech.in/merchant/agreement" }
+        ]
+      }]
+    }
+  }'
+```
 
-For issues or questions:
-- Check server logs for detailed error messages
-- Verify environment variables are set correctly
-- Test with a known working phone number
-- Contact your WhatsApp provider's support if needed
+## Logs (Vercel)
+
+WhatsApp runs inside the **signup server action** (not a separate `/api/...` route). In Vercel → Logs:
+
+1. Set time range to when you submitted signup.
+2. Search for **`merchant-welcome`**, **`whatsapp-cloud`**, or **`signup`** (not only the path `/signup`).
+3. Open the **`POST`** request for `/signup` (or the page that hosts the form) and expand **Function** / stdout — server-action logs appear there.
+
+After deploy, signup **awaits** the send so logs and DB updates should appear on the same request.
+
+Filter strings:
+
+- `[whatsapp-cloud]` — Graph API call
+- `[merchant-welcome]` — welcome template
+- `[signup] Sending merchant_welcome` — signup wired the send
+- `[merchant-onboarding-complete]` — post-agreement template
