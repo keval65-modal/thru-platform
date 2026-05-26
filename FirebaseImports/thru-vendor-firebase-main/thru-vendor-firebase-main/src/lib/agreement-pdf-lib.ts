@@ -1,4 +1,4 @@
-import { readFile } from 'fs/promises';
+import { access, readFile } from 'fs/promises';
 import path from 'path';
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
@@ -11,9 +11,10 @@ const MARGIN = 50;
 const LINE_HEIGHT = 14;
 const DEVANAGARI_RE = /[\u0900-\u097F]/;
 
-const FONT_DIR = path.join(process.cwd(), 'public', 'fonts', 'agreement');
-const DEVANAGARI_REGULAR = path.join(FONT_DIR, 'NotoSansDevanagari-Regular.woff2');
-const DEVANAGARI_BOLD = path.join(FONT_DIR, 'NotoSansDevanagari-Bold.woff2');
+const FONT_FILE_NAMES = {
+  regular: 'NotoSansDevanagari-Regular.woff2',
+  bold: 'NotoSansDevanagari-Bold.woff2',
+} as const;
 
 type PdfFonts = {
   regular: PDFFont;
@@ -23,12 +24,39 @@ type PdfFonts = {
 };
 
 let devanagariFontBytes: { regular: Uint8Array; bold: Uint8Array } | null = null;
+let resolvedFontDir: string | null = null;
+
+/** Resolve font directory (src/assets first — traced into serverless; public as fallback). */
+async function resolveFontDir(): Promise<string> {
+  if (resolvedFontDir) return resolvedFontDir;
+
+  const candidates = [
+    path.join(process.cwd(), 'src', 'lib', 'fonts', 'agreement'),
+    path.join(process.cwd(), 'public', 'fonts', 'agreement'),
+  ];
+
+  for (const dir of candidates) {
+    try {
+      await access(path.join(dir, FONT_FILE_NAMES.regular));
+      resolvedFontDir = dir;
+      return dir;
+    } catch {
+      // try next
+    }
+  }
+
+  throw new Error(
+    `Devanagari fonts not found. Tried: ${candidates.join(', ')}. ` +
+      'Ensure Noto Sans Devanagari woff2 files are deployed with the app.'
+  );
+}
 
 async function loadDevanagariFontBytes(): Promise<{ regular: Uint8Array; bold: Uint8Array }> {
   if (!devanagariFontBytes) {
+    const fontDir = await resolveFontDir();
     const [regular, bold] = await Promise.all([
-      readFile(DEVANAGARI_REGULAR),
-      readFile(DEVANAGARI_BOLD),
+      readFile(path.join(fontDir, FONT_FILE_NAMES.regular)),
+      readFile(path.join(fontDir, FONT_FILE_NAMES.bold)),
     ]);
     devanagariFontBytes = { regular, bold };
   }

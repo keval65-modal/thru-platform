@@ -21,6 +21,8 @@ import {
   merchantHasSignedAgreement,
 } from '@/lib/incomplete-registration';
 import { adminAuth } from '@/lib/firebase-admin';
+import { isValidIfscFormat, isValidUpiId } from '@/lib/ifsc';
+import { hasCompleteBankInput, saveVendorBankAccount } from '@/lib/vendor-bank';
 
 const timeOptions = [
     "12:00 AM (Midnight)", "12:30 AM", "01:00 AM", "01:30 AM", "02:00 AM", "02:30 AM",
@@ -71,9 +73,11 @@ const signupFormSchema = z.object({
   // Bank details (optional)
   accountHolderName: z.string().optional(),
   accountNumber: z.string().optional(),
+  confirmAccountNumber: z.string().optional(),
   ifscCode: z.string().optional(),
   bankName: z.string().optional(),
   branchName: z.string().optional(),
+  upiId: z.string().optional(),
   preferred_language: z.enum(['en', 'hi', 'mr']),
   whatsapp_consent: z.preprocess(boolPreprocess, z.boolean()).refine((v) => v === true, {
     message:
@@ -108,6 +112,81 @@ const signupFormSchema = z.object({
         });
       }
     }
+  }
+
+  const accountNumber = (data.accountNumber ?? '').trim();
+  const confirmAccountNumber = (data.confirmAccountNumber ?? '').trim();
+  if (accountNumber || confirmAccountNumber) {
+    if (!accountNumber) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['accountNumber'],
+        message: 'Account number is required.',
+      });
+    }
+    if (!confirmAccountNumber) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmAccountNumber'],
+        message: 'Please confirm your account number.',
+      });
+    }
+    if (accountNumber && confirmAccountNumber && accountNumber !== confirmAccountNumber) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmAccountNumber'],
+        message: 'Account numbers do not match.',
+      });
+    }
+  }
+
+  const hasAnyBankField = !!(
+    data.accountHolderName?.trim() ||
+    data.accountNumber?.trim() ||
+    data.confirmAccountNumber?.trim() ||
+    data.ifscCode?.trim() ||
+    data.bankName?.trim() ||
+    data.branchName?.trim() ||
+    data.upiId?.trim()
+  );
+
+  if (hasAnyBankField) {
+    if (!data.accountHolderName?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['accountHolderName'],
+        message: 'Account holder name is required when adding bank details.',
+      });
+    }
+    if (!data.ifscCode?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ifscCode'],
+        message: 'IFSC code is required when adding bank details.',
+      });
+    } else if (!isValidIfscFormat(data.ifscCode)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ifscCode'],
+        message: 'Invalid IFSC format (e.g. SBIN0001234).',
+      });
+    }
+    if (!data.bankName?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['bankName'],
+        message: 'Bank name is required when adding bank details.',
+      });
+    }
+  }
+
+  const upi = (data.upiId ?? '').trim();
+  if (upi && !isValidUpiId(upi)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['upiId'],
+      message: 'Invalid UPI ID format (e.g. name@bank).',
+    });
   }
 });
 
@@ -409,35 +488,39 @@ export async function handleSignupSupabase(
       updated_at: new Date().toISOString()
     };
 
-    // Add bank details if provided
-    if (vendorData.accountHolderName || vendorData.accountNumber || vendorData.ifscCode || vendorData.bankName) {
-      vendorProfile.bank_details = {
-        account_holder_name: vendorData.accountHolderName || null,
-        account_number: vendorData.accountNumber || null,
-        ifsc_code: vendorData.ifscCode?.toUpperCase() || null,
-        bank_name: vendorData.bankName || null,
-        branch_name: vendorData.branchName || null,
-      };
-    }
-
     const { success: profileSuccess, error: profileError } = await createVendorProfile(vendorProfile);
     
     if (!profileSuccess) {
       console.error('❌ Vendor profile creation failed:', profileError);
-      
-      // Check if error is related to missing bank_details column
-      const errorMessage = profileError || '';
-      if (errorMessage.includes('bank_details') && errorMessage.includes('schema cache')) {
-        return { 
-          success: false, 
-          error: 'Database schema error: bank_details column is missing. Please contact support or run the database migration.' 
-        };
-      }
-      
       return { success: false, error: `Failed to create vendor profile: ${profileError}` };
     }
 
     console.log('✅ Vendor profile created successfully!');
+
+    const bankInput = {
+      accountHolderName: vendorData.accountHolderName ?? '',
+      accountNumber: vendorData.accountNumber ?? '',
+      ifscCode: vendorData.ifscCode ?? '',
+      bankName: vendorData.bankName ?? '',
+      branchName: vendorData.branchName ?? null,
+      upiId: vendorData.upiId ?? null,
+    };
+
+    if (hasCompleteBankInput(bankInput)) {
+      console.log('💳 Saving bank account to vendor_bank_accounts...');
+      const bankResult = await saveVendorBankAccount(uid, bankInput);
+      if (!bankResult.success) {
+        console.error('❌ Bank account save failed:', bankResult.error);
+        const hint = bankResult.error?.includes('vendor_bank_accounts')
+          ? ' Run src/lib/supabase/onboarding-schema.sql in Supabase SQL Editor.'
+          : '';
+        return {
+          success: false,
+          error: `Shop registered but bank details could not be saved: ${bankResult.error}.${hint}`,
+        };
+      }
+      console.log('✅ Bank account saved');
+    }
 
     const phoneForWelcome = submittedPhone.startsWith('+')
       ? submittedPhone

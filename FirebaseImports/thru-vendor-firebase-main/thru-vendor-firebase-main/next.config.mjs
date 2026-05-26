@@ -23,7 +23,10 @@ const nextConfig = {
         '@pdf-lib/fontkit',
     ],
     outputFileTracingIncludes: {
-        '/api/merchant/agreement/sign': ['./public/fonts/agreement/**/*'],
+        '/api/merchant/agreement/sign': [
+            './src/lib/fonts/agreement/**/*',
+            './public/fonts/agreement/**/*',
+        ],
     },
     typescript: {
         ignoreBuildErrors: true, // Temporarily ignore TypeScript errors to get deployment working

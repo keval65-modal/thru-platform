@@ -2,15 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { getSupabaseDbClient } from '@/lib/supabase-auth';
+import { isValidIfscFormat } from '@/lib/ifsc';
+import { saveVendorBankAccount } from '@/lib/vendor-bank';
 
-const bankSchema = z.object({
-  accountHolderName: z.string().min(2),
-  accountNumber: z.string().min(6),
-  ifscCode: z.string().min(5),
-  bankName: z.string().min(2),
-  upiId: z.string().optional(),
-  branchName: z.string().optional(),
-});
+const bankSchema = z
+  .object({
+    accountHolderName: z.string().min(2),
+    accountNumber: z.string().min(6),
+    confirmAccountNumber: z.string().min(6),
+    ifscCode: z.string().min(5),
+    bankName: z.string().min(2),
+    upiId: z.string().optional(),
+    branchName: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.accountNumber.trim() !== data.confirmAccountNumber.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmAccountNumber'],
+        message: 'Account numbers do not match.',
+      });
+    }
+    if (!isValidIfscFormat(data.ifscCode)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ifscCode'],
+        message: 'Invalid IFSC format (e.g. SBIN0001234).',
+      });
+    }
+  });
 
 export async function GET() {
   const session = await getSession();
@@ -19,14 +39,26 @@ export async function GET() {
   }
 
   const sb = getSupabaseDbClient();
-  const [{ data: row }, { data: vendor }] = await Promise.all([
-    sb.from('vendor_bank_accounts').select('*').eq('vendor_id', session.uid).maybeSingle(),
-    sb.from('vendors').select('bank_details').eq('id', session.uid).maybeSingle(),
-  ]);
+  const { data: row } = await sb
+    .from('vendor_bank_accounts')
+    .select('*')
+    .eq('vendor_id', session.uid)
+    .maybeSingle();
+
+  let legacyBankDetails = null;
+  const { data: vendor, error: vendorErr } = await sb
+    .from('vendors')
+    .select('bank_details')
+    .eq('id', session.uid)
+    .maybeSingle();
+
+  if (!vendorErr) {
+    legacyBankDetails = vendor?.bank_details ?? null;
+  }
 
   return NextResponse.json({
     bankAccount: row ?? null,
-    legacyBankDetails: vendor?.bank_details ?? null,
+    legacyBankDetails,
   });
 }
 
@@ -49,36 +81,19 @@ export async function POST(req: NextRequest) {
   }
 
   const { accountHolderName, accountNumber, ifscCode, bankName, upiId, branchName } = parsed.data;
-  const sb = getSupabaseDbClient();
 
-  const payload = {
-    vendor_id: session.uid,
-    account_holder_name: accountHolderName,
-    account_number: accountNumber,
-    ifsc_code: ifscCode.toUpperCase(),
-    bank_name: bankName,
-    upi_id: upiId?.trim() || null,
-    updated_at: new Date().toISOString(),
-  };
+  const result = await saveVendorBankAccount(session.uid, {
+    accountHolderName,
+    accountNumber,
+    ifscCode,
+    bankName,
+    branchName: branchName?.trim() || null,
+    upiId: upiId?.trim() || null,
+  });
 
-  const { error: bankErr } = await sb.from('vendor_bank_accounts').upsert(payload, { onConflict: 'vendor_id' });
-  if (bankErr) {
-    return NextResponse.json({ error: bankErr.message }, { status: 500 });
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: 500 });
   }
-
-  const bankDetails = {
-    account_holder_name: accountHolderName,
-    account_number: accountNumber,
-    ifsc_code: ifscCode.toUpperCase(),
-    bank_name: bankName,
-    branch_name: branchName?.trim() || null,
-    upi_id: upiId?.trim() || null,
-  };
-
-  await sb
-    .from('vendors')
-    .update({ bank_details: bankDetails, updated_at: new Date().toISOString() })
-    .eq('id', session.uid);
 
   return NextResponse.json({ success: true });
 }

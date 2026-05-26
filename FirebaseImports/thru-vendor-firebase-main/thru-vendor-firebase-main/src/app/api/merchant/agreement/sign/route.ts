@@ -134,15 +134,23 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error('[agreement/sign] PDF generation failed:', message);
+    const stack = e instanceof Error ? e.stack : undefined;
+    console.error('[agreement/sign] PDF generation failed:', message, stack);
     await supabase.from('agreement_audit_logs').insert({
       merchant_id: merchantId,
       action: 'agreement_pdf_failed',
-      details: { message },
+      details: { message, language: lang, stack: stack?.slice(0, 500) },
       ip_address: ip,
       user_agent: userAgent,
     });
-    return NextResponse.json({ error: 'Failed to generate agreement PDF. Please try again.' }, { status: 500 });
+    const hint =
+      message.includes('Devanagari fonts not found') || message.includes('ENOENT')
+        ? ' Server deployment is missing Hindi font files — redeploy the latest build.'
+        : '';
+    return NextResponse.json(
+      { error: `Failed to generate agreement PDF. Please try again.${hint}` },
+      { status: 500 }
+    );
   }
 
   const objectPath = `${merchantId}/agreement_${AGREEMENT_VERSION}.pdf`;

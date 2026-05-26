@@ -7,19 +7,39 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, ArrowLeft } from 'lucide-react';
+import { isValidIfscFormat } from '@/lib/ifsc';
+import { IfscLookupField } from '@/components/bank/IfscLookupField';
 
-const schema = z.object({
-  accountHolderName: z.string().min(2, 'Required'),
-  accountNumber: z.string().min(6, 'Required'),
-  ifscCode: z.string().min(5, 'Required'),
-  bankName: z.string().min(2, 'Required'),
-  branchName: z.string().optional(),
-  upiId: z.string().optional(),
-});
+const schema = z
+  .object({
+    accountHolderName: z.string().min(2, 'Required'),
+    accountNumber: z.string().min(6, 'Required'),
+    confirmAccountNumber: z.string().min(6, 'Required'),
+    ifscCode: z.string().min(5, 'Required'),
+    bankName: z.string().min(2, 'Required'),
+    branchName: z.string().optional(),
+    upiId: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.accountNumber.trim() !== data.confirmAccountNumber.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmAccountNumber'],
+        message: 'Account numbers do not match.',
+      });
+    }
+    if (!isValidIfscFormat(data.ifscCode)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ifscCode'],
+        message: 'Invalid IFSC format (e.g. SBIN0001234).',
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -33,6 +53,7 @@ export function MerchantBankForm() {
     defaultValues: {
       accountHolderName: '',
       accountNumber: '',
+      confirmAccountNumber: '',
       ifscCode: '',
       bankName: '',
       branchName: '',
@@ -52,6 +73,7 @@ export function MerchantBankForm() {
           form.reset({
             accountHolderName: row.account_holder_name || '',
             accountNumber: row.account_number || '',
+            confirmAccountNumber: row.account_number || '',
             ifscCode: row.ifsc_code || '',
             bankName: row.bank_name || '',
             branchName: '',
@@ -61,6 +83,7 @@ export function MerchantBankForm() {
           form.reset({
             accountHolderName: legacy.account_holder_name || '',
             accountNumber: legacy.account_number || '',
+            confirmAccountNumber: legacy.account_number || '',
             ifscCode: legacy.ifsc_code || '',
             bankName: legacy.bank_name || '',
             branchName: legacy.branch_name || '',
@@ -141,8 +164,38 @@ export function MerchantBankForm() {
                     <FormItem>
                       <FormLabel>Account number</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input
+                          {...field}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                        />
                       </FormControl>
+                      <FormDescription className="text-xs">
+                        Enter your account number as shown on your bank statement.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="confirmAccountNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Confirm account number</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="Re-enter account number"
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Re-enter your account number to confirm it is correct.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -152,10 +205,19 @@ export function MerchantBankForm() {
                     control={form.control}
                     name="ifscCode"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="sm:col-span-2">
                         <FormLabel>IFSC code</FormLabel>
                         <FormControl>
-                          <Input {...field} className="uppercase" />
+                          <IfscLookupField
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                            onResolved={(result) => {
+                              form.setValue('bankName', result.bank, { shouldValidate: true });
+                              if (result.branch) {
+                                form.setValue('branchName', result.branch, { shouldValidate: true });
+                              }
+                            }}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

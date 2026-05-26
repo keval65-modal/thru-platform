@@ -28,6 +28,8 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader } from '@googlemaps/js-api-loader';
 import { setupRecaptcha, sendOTP, verifyOTP, cleanupRecaptcha } from '@/lib/firebase-otp';
+import { isValidIfscFormat, isValidUpiId } from '@/lib/ifsc';
+import { IfscLookupField } from '@/components/bank/IfscLookupField';
 import type { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
 import ReactCrop, {
   centerCrop,
@@ -103,9 +105,11 @@ const signupFormSchema = z.object({
   // Bank details (optional)
   accountHolderName: z.string().optional(),
   accountNumber: z.string().optional(),
+  confirmAccountNumber: z.string().optional(),
   ifscCode: z.string().optional(),
   bankName: z.string().optional(),
   branchName: z.string().optional(),
+  upiId: z.string().optional(),
   preferred_language: z.enum(['en', 'hi', 'mr']),
   whatsapp_consent: z.boolean().refine((v) => v === true, {
     message:
@@ -138,6 +142,81 @@ const signupFormSchema = z.object({
             });
           }
         }
+    }
+
+    const accountNumber = (data.accountNumber ?? '').trim();
+    const confirmAccountNumber = (data.confirmAccountNumber ?? '').trim();
+    if (accountNumber || confirmAccountNumber) {
+      if (!accountNumber) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Account number is required.',
+          path: ['accountNumber'],
+        });
+      }
+      if (!confirmAccountNumber) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please confirm your account number.',
+          path: ['confirmAccountNumber'],
+        });
+      }
+      if (accountNumber && confirmAccountNumber && accountNumber !== confirmAccountNumber) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Account numbers do not match.',
+          path: ['confirmAccountNumber'],
+        });
+      }
+    }
+
+    const hasAnyBankField = !!(
+      data.accountHolderName?.trim() ||
+      data.accountNumber?.trim() ||
+      data.confirmAccountNumber?.trim() ||
+      data.ifscCode?.trim() ||
+      data.bankName?.trim() ||
+      data.branchName?.trim() ||
+      data.upiId?.trim()
+    );
+
+    if (hasAnyBankField) {
+      if (!data.accountHolderName?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Account holder name is required when adding bank details.',
+          path: ['accountHolderName'],
+        });
+      }
+      if (!data.ifscCode?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'IFSC code is required when adding bank details.',
+          path: ['ifscCode'],
+        });
+      } else if (!isValidIfscFormat(data.ifscCode)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invalid IFSC format (e.g. SBIN0001234).',
+          path: ['ifscCode'],
+        });
+      }
+      if (!data.bankName?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Bank name is required when adding bank details.',
+          path: ['bankName'],
+        });
+      }
+    }
+
+    const upi = (data.upiId ?? '').trim();
+    if (upi && !isValidUpiId(upi)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid UPI ID format (e.g. name@bank).',
+        path: ['upiId'],
+      });
     }
 });
 
@@ -209,7 +288,7 @@ export function SignupForm() {
       weeklyCloseOn: '', openingTime: '', closingTime: '', shopFullAddress: '',
       latitude: undefined, longitude: undefined, shopImage: undefined, alwaysOpen: false,
       firebaseIdToken: '',
-      accountHolderName: '', accountNumber: '', ifscCode: '', bankName: '', branchName: '',
+      accountHolderName: '', accountNumber: '', confirmAccountNumber: '', ifscCode: '', bankName: '', branchName: '', upiId: '',
       preferred_language: 'en',
       whatsapp_consent: false,
     },
@@ -542,7 +621,7 @@ export function SignupForm() {
     console.log('✅ OTP verified, preparing form data...');
     const formData = new FormData();
     Object.entries(values).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && key !== 'shopImage') {
+        if (value !== undefined && value !== null && key !== 'shopImage' && key !== 'confirmAccountNumber') {
             formData.append(key, String(value));
         }
     });
@@ -889,8 +968,39 @@ export function SignupForm() {
                 <FormItem>
                   <FormLabel>Account Number</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="e.g., 1234567890" type="text" inputMode="numeric" />
+                    <Input
+                      {...field}
+                      placeholder="e.g., 1234567890"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                    />
                   </FormControl>
+                  <FormDescription className="text-xs">
+                    Enter your account number as shown on your bank statement.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="confirmAccountNumber"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Confirm Account Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Re-enter account number"
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                    />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Re-enter your account number to confirm it is correct.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -902,11 +1012,17 @@ export function SignupForm() {
                 <FormItem>
                   <FormLabel>IFSC Code</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="e.g., SBIN0001234" className="uppercase" maxLength={11} onChange={(e) => field.onChange(e.target.value.toUpperCase())} />
+                    <IfscLookupField
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onResolved={(result) => {
+                        form.setValue('bankName', result.bank, { shouldValidate: true });
+                        if (result.branch) {
+                          form.setValue('branchName', result.branch, { shouldValidate: true });
+                        }
+                      }}
+                    />
                   </FormControl>
-                  <FormDescription className="text-xs">
-                    Indian Financial System Code (11 characters)
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -933,6 +1049,22 @@ export function SignupForm() {
                   <FormControl>
                     <Input {...field} placeholder="e.g., Main Branch, Mumbai" />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="upiId"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>UPI ID (Optional)</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="e.g., yourname@paytm" autoComplete="off" />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    UPI address for receiving payments (e.g. name@bank).
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
