@@ -17,26 +17,38 @@ All three are connected to the same GitHub repo (`keval65-modal/thru-platform`, 
 
 ## Ignored build step (per project)
 
-Only deploys when files under that app's root change:
+Vercel **skips** the build when the command exits `0`, and **runs** it when the command exits `1`.
+
+`git diff --quiet` exits `1` when files changed, `0` when unchanged — so only the app whose path changed should build:
 
 - **Vendor:** `git diff HEAD^ HEAD --quiet -- FirebaseImports/thru-vendor-firebase-main/thru-vendor-firebase-main/`
 - **User:** `git diff HEAD^ HEAD --quiet -- FirebaseImports/thru-user-app29082025-master/thru-user-app29082025-master/`
 - **Landing:** `git diff HEAD^ HEAD --quiet -- FirebaseImports/thru-landing/`
 
-## Manual CLI deploy (optional)
+If Git deploys stay **Canceled** (1s, no build), use Vercel env SHAs instead (per project, same path):
+
+```bash
+git diff --quiet $VERCEL_GIT_PREVIOUS_SHA $VERCEL_GIT_COMMIT_SHA -- FirebaseImports/thru-vendor-firebase-main/thru-vendor-firebase-main/
+```
+
+**If production shows old UI:** open Deployments — **Canceled** = skipped; the last **Ready** deployment is still live. User/landing may show a deployment row for every push even when only vendor code changed.
+
+## Manual CLI deploy (required when Git deploys are canceled)
+
+Deploy from the **monorepo root** (`thru-platform`), not from inside the app folder (avoids doubled `rootDirectory` paths):
 
 ```powershell
-# Vendor
-Set-Location FirebaseImports\thru-vendor-firebase-main\thru-vendor-firebase-main
-npx vercel --prod --yes --scope keval65-modals-projects
+# From repo root (F:\thru or clone root)
+cd <repo-root>
 
-# User app
-Set-Location FirebaseImports\thru-user-app29082025-master\thru-user-app29082025-master
-npx vercel --prod --yes --scope keval65-modals-projects
+# Vendor → merchant.kiptech.in
+npx vercel deploy --prod --yes --scope keval65-modals-projects --project thru-vendor-dashboard
 
-# Landing
-Set-Location FirebaseImports\thru-landing
-npx vercel --prod --yes --scope keval65-modals-projects
+# User app → app.kiptech.in
+npx vercel deploy --prod --yes --scope keval65-modals-projects --project thru-user-app29082025-master
+
+# Landing → thru.kiptech.in
+npx vercel deploy --prod --yes --scope keval65-modals-projects --project thru-landing
 ```
 
 ## Re-link / reconnect (if needed)

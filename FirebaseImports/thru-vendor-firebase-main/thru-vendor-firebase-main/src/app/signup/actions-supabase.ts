@@ -65,8 +65,22 @@ const signupFormSchema = z.object({
   openingTime: z.string().optional(),
   closingTime: z.string().optional(),
   shopFullAddress: z.string().min(10),
-  latitude: z.preprocess(val => parseFloat(String(val)), z.number()),
-  longitude: z.preprocess(val => parseFloat(String(val)), z.number()),
+  latitude: z.preprocess(
+    (val) => {
+      if (val === '' || val === undefined || val === null) return undefined;
+      const n = parseFloat(String(val));
+      return Number.isFinite(n) ? n : undefined;
+    },
+    z.number({ invalid_type_error: 'Latitude must be a number.' }).min(-90).max(90)
+  ).refine((v) => v !== undefined, { message: 'Latitude is required. Use address search or enter manually.' }),
+  longitude: z.preprocess(
+    (val) => {
+      if (val === '' || val === undefined || val === null) return undefined;
+      const n = parseFloat(String(val));
+      return Number.isFinite(n) ? n : undefined;
+    },
+    z.number({ invalid_type_error: 'Longitude must be a number.' }).min(-180).max(180)
+  ).refine((v) => v !== undefined, { message: 'Longitude is required. Use address search or enter manually.' }),
   alwaysOpen: z.preprocess(boolPreprocess, z.boolean()).default(false),
   firebaseIdToken: z.string().min(10, { message: 'Phone verification token missing.' }),
   shopImage: z.any().optional(),
@@ -225,11 +239,13 @@ export async function handleSignupSupabase(
     const validatedFields = signupFormSchema.safeParse(dataToValidate);
 
     if (!validatedFields.success) {
-      console.error("❌ Signup validation errors:", validatedFields.error.flatten().fieldErrors);
+      const fieldErrors = validatedFields.error.flatten().fieldErrors;
+      console.error('❌ Signup validation errors:', fieldErrors);
+      const firstMessage = Object.values(fieldErrors).flat().find(Boolean);
       return {
         success: false,
-        error: "Invalid form data. Please check your inputs.",
-        fields: validatedFields.error.flatten().fieldErrors,
+        error: firstMessage ?? 'Invalid form data. Please check your inputs.',
+        fields: fieldErrors,
       };
     }
 

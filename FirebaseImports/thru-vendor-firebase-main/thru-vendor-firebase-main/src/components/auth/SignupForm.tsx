@@ -298,6 +298,17 @@ export function SignupForm() {
   const phoneNumber = form.watch('phoneNumber');
 
   React.useEffect(() => {
+    if (state?.fields) {
+      Object.entries(state.fields).forEach(([field, messages]) => {
+        const message = messages?.[0];
+        if (message) {
+          form.setError(field as keyof z.infer<typeof signupFormSchema>, { message });
+        }
+      });
+    }
+  }, [state?.fields, form]);
+
+  React.useEffect(() => {
     if (state?.error) {
        toast({ variant: "destructive", title: "Signup Failed", description: state.error });
     }
@@ -619,12 +630,23 @@ export function SignupForm() {
     }
     
     console.log('✅ OTP verified, preparing form data...');
+    form.setValue('firebaseIdToken', firebaseIdToken);
+
     const formData = new FormData();
     Object.entries(values).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && key !== 'shopImage' && key !== 'confirmAccountNumber') {
+        if (
+          value !== undefined &&
+          value !== null &&
+          key !== 'shopImage' &&
+          key !== 'confirmAccountNumber' &&
+          key !== 'firebaseIdToken'
+        ) {
             formData.append(key, String(value));
         }
     });
+    formData.set('firebaseIdToken', firebaseIdToken);
+    formData.set('whatsapp_consent', values.whatsapp_consent ? 'true' : 'false');
+    formData.set('alwaysOpen', values.alwaysOpen ? 'true' : 'false');
 
     if (completedCrop && originalFile && imgRef.current) {
         console.log('📸 Processing image crop...');
@@ -641,7 +663,26 @@ export function SignupForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {state?.error && <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{state.error}</AlertDescription></Alert>}
+        {state?.error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>
+              {state.error}
+              {state.fields && (
+                <ul className="mt-2 list-disc pl-4 text-sm">
+                  {Object.entries(state.fields).flatMap(([field, msgs]) =>
+                    (msgs ?? []).map((msg) => (
+                      <li key={`${field}-${msg}`}>
+                        <span className="font-medium">{field}</span>: {msg}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
 
         <FormField control={form.control} name="shopName" render={({ field }) => (<FormItem><FormLabel>Shop Name *</FormLabel><FormControl><Input {...field} placeholder="e.g., The Corner Cafe" /></FormControl><FormMessage /></FormItem>)}/>
         
