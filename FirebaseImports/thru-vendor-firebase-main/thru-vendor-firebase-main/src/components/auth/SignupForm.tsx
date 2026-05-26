@@ -28,6 +28,13 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader } from '@googlemaps/js-api-loader';
 import { setupRecaptcha, sendOTP, verifyOTP, cleanupRecaptcha } from '@/lib/firebase-otp';
+import {
+  formatCooldown,
+  getOtpCooldownRemainingSec,
+  OTP_RATE_LIMIT_COOLDOWN_SEC,
+  OTP_RESEND_COOLDOWN_SEC,
+  setOtpCooldown,
+} from '@/lib/otp-cooldown';
 import { isValidIfscFormat, isValidUpiId } from '@/lib/ifsc';
 import { IfscLookupField } from '@/components/bank/IfscLookupField';
 import type { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
@@ -279,6 +286,7 @@ export function SignupForm() {
   const [otpVerified, setOtpVerified] = React.useState(false);
   const [otpError, setOtpError] = React.useState<string | null>(null);
   const [firebaseIdToken, setFirebaseIdToken] = React.useState('');
+  const [otpCooldownSec, setOtpCooldownSec] = React.useState(0);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -571,6 +579,20 @@ export function SignupForm() {
 
   const fullPhoneNumber = React.useMemo(() => `${phoneCountryCode}${phoneNumber}`, [phoneCountryCode, phoneNumber]);
 
+  React.useEffect(() => {
+    const tick = () => setOtpCooldownSec(getOtpCooldownRemainingSec(fullPhoneNumber));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [fullPhoneNumber]);
+
+  const resetRecaptcha = React.useCallback(() => {
+    if (recaptchaVerifier) {
+      cleanupRecaptcha(recaptchaVerifier);
+    }
+    setRecaptchaVerifier(setupRecaptcha('vendor-signup-recaptcha'));
+  }, [recaptchaVerifier]);
+
   const handleSendOTP = async () => {
     if (!recaptchaVerifier) {
       toast({ variant: "destructive", title: "OTP Error", description: "reCAPTCHA not initialized yet. Please wait a moment." });
@@ -582,6 +604,14 @@ export function SignupForm() {
       return;
     }
 
+    const cooldown = getOtpCooldownRemainingSec(fullPhoneNumber);
+    if (cooldown > 0) {
+      const msg = `Please wait ${formatCooldown(cooldown)} before requesting another code.`;
+      setOtpError(msg);
+      toast({ variant: "destructive", title: "OTP limit", description: msg });
+      return;
+    }
+
     setSendingOTP(true);
     setOtpError(null);
 
@@ -589,10 +619,16 @@ export function SignupForm() {
     if (result.success && result.confirmationResult) {
       setConfirmationResult(result.confirmationResult);
       setOtpSent(true);
+      setOtpCooldown(fullPhoneNumber, OTP_RESEND_COOLDOWN_SEC, 'resend');
       toast({ title: "OTP Sent", description: "Please check your phone for the verification code." });
     } else {
-      setOtpError(result.error || 'Failed to send OTP. Please try again.');
-      toast({ variant: "destructive", title: "OTP Error", description: result.error });
+      const err = result.error || 'Failed to send OTP. Please try again.';
+      setOtpError(err);
+      toast({ variant: "destructive", title: "OTP Error", description: err });
+      if (err.toLowerCase().includes('too many')) {
+        setOtpCooldown(fullPhoneNumber, OTP_RATE_LIMIT_COOLDOWN_SEC, 'blocked');
+      }
+      resetRecaptcha();
     }
     setSendingOTP(false);
   };
@@ -757,9 +793,18 @@ export function SignupForm() {
 
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="button" onClick={handleSendOTP} disabled={sendingOTP || otpVerified} className="w-full sm:w-auto">
+              <Button
+                type="button"
+                onClick={handleSendOTP}
+                disabled={sendingOTP || otpVerified || otpCooldownSec > 0}
+                className="w-full sm:w-auto"
+              >
                 {sendingOTP ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {otpSent ? 'Resend OTP' : 'Send OTP'}
+                {otpCooldownSec > 0
+                  ? `Wait ${formatCooldown(otpCooldownSec)}`
+                  : otpSent
+                    ? 'Resend OTP'
+                    : 'Send OTP'}
               </Button>
               {otpSent && (
                 <div className="flex flex-1 gap-2">
@@ -778,7 +823,8 @@ export function SignupForm() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Verified phone numbers let vendors log in with either email or phone.
+              Verified phone numbers let vendors log in with either email or phone. After several attempts,
+              Firebase may block SMS for up to an hour — use a different number or wait before resending.
             </p>
           </div>
         </div>

@@ -90,7 +90,8 @@ export async function sendOTP(
     if (error.code === 'auth/invalid-phone-number') {
       errorMessage = 'Invalid phone number format. Please use international format (e.g., +919876543210)';
     } else if (error.code === 'auth/too-many-requests') {
-      errorMessage = 'Too many attempts. Please try again later.';
+      errorMessage =
+        'Too many SMS attempts for this number. Firebase has temporarily blocked new codes — wait about 1 hour, or try again later. For testing, you can use a different phone number.';
     } else if (error.code === 'auth/quota-exceeded') {
       errorMessage = 'SMS quota exceeded. Please upgrade to Blaze plan or contact support.';
     } else if (error.code === 'auth/captcha-check-failed') {
