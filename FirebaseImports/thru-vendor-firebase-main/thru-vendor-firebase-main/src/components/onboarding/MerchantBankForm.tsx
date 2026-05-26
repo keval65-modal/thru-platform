@@ -12,7 +12,11 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { isValidIfscFormat } from '@/lib/ifsc';
-import { maskedAccountNumberInputProps, normalizeAccountNumber } from '@/lib/bank-account';
+import { normalizeAccountNumber } from '@/lib/bank-account';
+import {
+  BankAccountNumberFields,
+  readConfirmAccountFromDom,
+} from '@/components/bank/BankAccountNumberFields';
 import { IfscLookupField } from '@/components/bank/IfscLookupField';
 
 const schema = z
@@ -56,6 +60,7 @@ export function MerchantBankForm() {
   const { toast } = useToast();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const confirmAccountInputRef = React.useRef<HTMLInputElement>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -105,14 +110,29 @@ export function MerchantBankForm() {
     })();
   }, [form]);
 
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const confirmVal = readConfirmAccountFromDom(
+      confirmAccountInputRef,
+      form.getValues('confirmAccountNumber')
+    );
+    form.setValue('confirmAccountNumber', confirmVal, { shouldValidate: false });
+    void form.handleSubmit(onSubmit)(e);
+  };
+
   const onSubmit = async (values: FormValues) => {
     setSaving(true);
     try {
+      const payload = {
+        ...values,
+        accountNumber: normalizeAccountNumber(values.accountNumber),
+        confirmAccountNumber: normalizeAccountNumber(values.confirmAccountNumber),
+      };
       const res = await fetch('/api/merchant/bank', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(values),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -152,7 +172,7 @@ export function MerchantBankForm() {
             </div>
           ) : (
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={handleFormSubmit} className="space-y-4">
                 <FormField
                   control={form.control}
                   name="accountHolderName"
@@ -166,54 +186,10 @@ export function MerchantBankForm() {
                     </FormItem>
                   )}
                 />
-                <FormField
+                <BankAccountNumberFields
                   control={form.control}
-                  name="accountNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Account number</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          value={field.value ?? ''}
-                          onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          data-lpignore="true"
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        Enter your account number as shown on your bank statement.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="confirmAccountNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Confirm account number</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          value={field.value ?? ''}
-                          onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
-                          onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
-                          placeholder="Re-enter account number"
-                          {...maskedAccountNumberInputProps}
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        Re-enter your account number to confirm it is correct.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  confirmInputRef={confirmAccountInputRef}
+                  confirmFullWidth={false}
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField

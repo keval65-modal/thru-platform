@@ -36,7 +36,11 @@ import {
   setOtpCooldown,
 } from '@/lib/otp-cooldown';
 import { isValidIfscFormat, isValidUpiId } from '@/lib/ifsc';
-import { maskedAccountNumberInputProps, normalizeAccountNumber } from '@/lib/bank-account';
+import { normalizeAccountNumber } from '@/lib/bank-account';
+import {
+  BankAccountNumberFields,
+  readConfirmAccountFromDom,
+} from '@/components/bank/BankAccountNumberFields';
 import { IfscLookupField } from '@/components/bank/IfscLookupField';
 import type { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
 import ReactCrop, {
@@ -288,6 +292,7 @@ export function SignupForm() {
   const [otpError, setOtpError] = React.useState<string | null>(null);
   const [firebaseIdToken, setFirebaseIdToken] = React.useState('');
   const [otpCooldownSec, setOtpCooldownSec] = React.useState(0);
+  const confirmAccountInputRef = React.useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -657,6 +662,16 @@ export function SignupForm() {
     setVerifyingOTP(false);
   };
   
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const confirmVal = readConfirmAccountFromDom(
+      confirmAccountInputRef,
+      form.getValues('confirmAccountNumber')
+    );
+    form.setValue('confirmAccountNumber', confirmVal, { shouldValidate: false });
+    void form.handleSubmit(onSubmit)(e);
+  };
+
   const onSubmit = async (values: z.infer<typeof signupFormSchema>) => {
     console.log('🔵 Form submit triggered', { otpVerified, firebaseIdToken: firebaseIdToken ? 'present' : 'missing' });
     
@@ -676,6 +691,7 @@ export function SignupForm() {
           value !== null &&
           key !== 'shopImage' &&
           key !== 'confirmAccountNumber' &&
+          key !== 'accountNumber' &&
           key !== 'firebaseIdToken'
         ) {
             formData.append(key, String(value));
@@ -684,6 +700,7 @@ export function SignupForm() {
     formData.set('firebaseIdToken', firebaseIdToken);
     formData.set('whatsapp_consent', values.whatsapp_consent ? 'true' : 'false');
     formData.set('alwaysOpen', values.alwaysOpen ? 'true' : 'false');
+    formData.set('accountNumber', normalizeAccountNumber(values.accountNumber ?? ''));
 
     if (completedCrop && originalFile && imgRef.current) {
         console.log('📸 Processing image crop...');
@@ -699,7 +716,7 @@ export function SignupForm() {
   
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleFormSubmit} className="space-y-6">
         {state?.error && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
@@ -1049,55 +1066,9 @@ export function SignupForm() {
                 </FormItem>
               )}
             />
-            <FormField
+            <BankAccountNumberFields
               control={form.control}
-              name="accountNumber"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Account Number</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      value={field.value ?? ''}
-                      onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
-                      placeholder="e.g., 1234567890"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      data-lpignore="true"
-                    />
-                  </FormControl>
-                  <FormDescription className="text-xs">
-                    Enter your account number as shown on your bank statement.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="confirmAccountNumber"
-              render={({ field }) => (
-                <FormItem className="md:col-span-2">
-                  <FormLabel>Confirm Account Number</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      value={field.value ?? ''}
-                      onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
-                      onBlur={field.onBlur}
-                      name={field.name}
-                      ref={field.ref}
-                      placeholder="Re-enter account number"
-                      {...maskedAccountNumberInputProps}
-                    />
-                  </FormControl>
-                  <FormDescription className="text-xs">
-                    Re-enter your account number to confirm it is correct.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+              confirmInputRef={confirmAccountInputRef}
             />
             <FormField
               control={form.control}

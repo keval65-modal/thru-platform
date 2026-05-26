@@ -5,6 +5,12 @@ export function normalizeAccountNumber(value: string): string {
   return value.replace(/\D/g, '');
 }
 
+export function accountsMatch(account: string, confirm: string): boolean {
+  const a = normalizeAccountNumber(account);
+  const c = normalizeAccountNumber(confirm);
+  return a.length > 0 && a === c;
+}
+
 const MASKED_ACCOUNT_INPUT_STYLE: CSSProperties = {
   WebkitTextSecurity: 'disc',
 };
