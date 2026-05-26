@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { getSupabaseDbClient } from '@/lib/supabase-auth';
 import { isValidIfscFormat } from '@/lib/ifsc';
+import { normalizeAccountNumber } from '@/lib/bank-account';
 import { saveVendorBankAccount } from '@/lib/vendor-bank';
 
 const bankSchema = z
@@ -16,7 +17,15 @@ const bankSchema = z
     branchName: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.accountNumber.trim() !== data.confirmAccountNumber.trim()) {
+    const accountNumber = normalizeAccountNumber(data.accountNumber);
+    const confirmAccountNumber = normalizeAccountNumber(data.confirmAccountNumber);
+    if (!confirmAccountNumber) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmAccountNumber'],
+        message: 'Please re-enter your account number in the confirm field.',
+      });
+    } else if (accountNumber !== confirmAccountNumber) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['confirmAccountNumber'],

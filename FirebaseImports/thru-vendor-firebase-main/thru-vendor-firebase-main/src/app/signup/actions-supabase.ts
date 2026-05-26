@@ -22,6 +22,7 @@ import {
 } from '@/lib/incomplete-registration';
 import { adminAuth } from '@/lib/firebase-admin';
 import { isValidIfscFormat, isValidUpiId } from '@/lib/ifsc';
+import { normalizeAccountNumber } from '@/lib/bank-account';
 import { hasCompleteBankInput, saveVendorBankAccount } from '@/lib/vendor-bank';
 
 const timeOptions = [
@@ -128,8 +129,8 @@ const signupFormSchema = z.object({
     }
   }
 
-  const accountNumber = (data.accountNumber ?? '').trim();
-  const confirmAccountNumber = (data.confirmAccountNumber ?? '').trim();
+  const accountNumber = normalizeAccountNumber(data.accountNumber ?? '');
+  const confirmAccountNumber = normalizeAccountNumber(data.confirmAccountNumber ?? '');
   if (accountNumber || confirmAccountNumber) {
     if (!accountNumber) {
       ctx.addIssue({
@@ -142,7 +143,7 @@ const signupFormSchema = z.object({
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['confirmAccountNumber'],
-        message: 'Please confirm your account number.',
+        message: 'Please re-enter your account number in the confirm field.',
       });
     }
     if (accountNumber && confirmAccountNumber && accountNumber !== confirmAccountNumber) {
@@ -515,7 +516,7 @@ export async function handleSignupSupabase(
 
     const bankInput = {
       accountHolderName: vendorData.accountHolderName ?? '',
-      accountNumber: vendorData.accountNumber ?? '',
+      accountNumber: normalizeAccountNumber(vendorData.accountNumber ?? ''),
       ifscCode: vendorData.ifscCode ?? '',
       bankName: vendorData.bankName ?? '',
       branchName: vendorData.branchName ?? null,

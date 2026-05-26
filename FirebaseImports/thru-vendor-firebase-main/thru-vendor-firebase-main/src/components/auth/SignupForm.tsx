@@ -36,6 +36,7 @@ import {
   setOtpCooldown,
 } from '@/lib/otp-cooldown';
 import { isValidIfscFormat, isValidUpiId } from '@/lib/ifsc';
+import { maskedAccountNumberInputProps, normalizeAccountNumber } from '@/lib/bank-account';
 import { IfscLookupField } from '@/components/bank/IfscLookupField';
 import type { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
 import ReactCrop, {
@@ -151,8 +152,8 @@ const signupFormSchema = z.object({
         }
     }
 
-    const accountNumber = (data.accountNumber ?? '').trim();
-    const confirmAccountNumber = (data.confirmAccountNumber ?? '').trim();
+    const accountNumber = normalizeAccountNumber(data.accountNumber ?? '');
+    const confirmAccountNumber = normalizeAccountNumber(data.confirmAccountNumber ?? '');
     if (accountNumber || confirmAccountNumber) {
       if (!accountNumber) {
         ctx.addIssue({
@@ -164,7 +165,7 @@ const signupFormSchema = z.object({
       if (!confirmAccountNumber) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Please confirm your account number.',
+          message: 'Please re-enter your account number in the confirm field.',
           path: ['confirmAccountNumber'],
         });
       }
@@ -1057,10 +1058,13 @@ export function SignupForm() {
                   <FormControl>
                     <Input
                       {...field}
+                      value={field.value ?? ''}
+                      onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
                       placeholder="e.g., 1234567890"
                       type="text"
                       inputMode="numeric"
                       autoComplete="off"
+                      data-lpignore="true"
                     />
                   </FormControl>
                   <FormDescription className="text-xs">
@@ -1079,10 +1083,13 @@ export function SignupForm() {
                   <FormControl>
                     <Input
                       {...field}
+                      value={field.value ?? ''}
+                      onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
                       placeholder="Re-enter account number"
-                      type="password"
-                      inputMode="numeric"
-                      autoComplete="off"
+                      {...maskedAccountNumberInputProps}
                     />
                   </FormControl>
                   <FormDescription className="text-xs">

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { isValidIfscFormat } from '@/lib/ifsc';
+import { maskedAccountNumberInputProps, normalizeAccountNumber } from '@/lib/bank-account';
 import { IfscLookupField } from '@/components/bank/IfscLookupField';
 
 const schema = z
@@ -25,7 +26,15 @@ const schema = z
     upiId: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.accountNumber.trim() !== data.confirmAccountNumber.trim()) {
+    const accountNumber = normalizeAccountNumber(data.accountNumber);
+    const confirmAccountNumber = normalizeAccountNumber(data.confirmAccountNumber);
+    if (!confirmAccountNumber) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirmAccountNumber'],
+        message: 'Please re-enter your account number in the confirm field.',
+      });
+    } else if (accountNumber !== confirmAccountNumber) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['confirmAccountNumber'],
@@ -166,9 +175,12 @@ export function MerchantBankForm() {
                       <FormControl>
                         <Input
                           {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
                           type="text"
                           inputMode="numeric"
                           autoComplete="off"
+                          data-lpignore="true"
                         />
                       </FormControl>
                       <FormDescription className="text-xs">
@@ -187,10 +199,13 @@ export function MerchantBankForm() {
                       <FormControl>
                         <Input
                           {...field}
-                          type="password"
-                          inputMode="numeric"
-                          autoComplete="off"
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(normalizeAccountNumber(e.target.value))}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
                           placeholder="Re-enter account number"
+                          {...maskedAccountNumberInputProps}
                         />
                       </FormControl>
                       <FormDescription className="text-xs">
