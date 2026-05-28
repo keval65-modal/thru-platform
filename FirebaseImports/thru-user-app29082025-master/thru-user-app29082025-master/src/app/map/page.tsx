@@ -85,6 +85,13 @@ export default function MapPage() {
     loadShops();
   }, []);
 
+  // If navigating client-side, the script may already be loaded and `onLoad` won't fire.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.google?.maps) {
+      setIsGoogleMapsLoaded(true);
+    }
+  }, []);
+
   // Subscribe to real-time updates
   useEffect(() => {
     const unsubscribe = subscribeToShopUpdates((updatedShops) => {
@@ -178,8 +185,9 @@ export default function MapPage() {
   return (
     <>
       {/* Load Google Maps Script */}
-      {GOOGLE_MAPS_API_KEY && (
+      {GOOGLE_MAPS_API_KEY && !isGoogleMapsLoaded && (
         <Script
+          id="google-maps-js"
           src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`}
           onLoad={handleGoogleMapsLoad}
           strategy="afterInteractive"
