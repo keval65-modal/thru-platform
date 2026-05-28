@@ -7,9 +7,10 @@ import { ShopMap } from '@/components/map/ShopMap';
 import { ShopMarkerData, ShopCategory } from '@/types/map-types';
 import { getAllShopsForMap, subscribeToShopUpdates } from '@/lib/map-service';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import BottomNav from '@/components/layout/bottom-nav';
 import { useToast } from '@/hooks/use-toast';
+import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
 
 // Category filter configuration
 const CATEGORY_FILTERS = [
@@ -50,12 +51,29 @@ const CATEGORY_FILTERS = [
   }
 ];
 
+function toRadians(deg: number) {
+  return (deg * Math.PI) / 180;
+}
+
+function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+  const R = 6371;
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 export default function MapPage() {
   const { toast } = useToast();
   const [shops, setShops] = useState<ShopMarkerData[]>([]);
   const [filteredShops, setFilteredShops] = useState<ShopMarkerData[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<(ShopCategory | 'all')[]>(['all']);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | undefined>();
+  const [vicinityKm, setVicinityKm] = useState(5); // default 5km vicinity
   const [isLoadingShops, setIsLoadingShops] = useState(true);
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
@@ -80,15 +98,20 @@ export default function MapPage() {
 
   // Filter shops when category selection changes
   useEffect(() => {
-    if (selectedCategories.includes('all')) {
-      setFilteredShops(shops);
-    } else {
-      const filtered = shops.filter(shop => 
-        selectedCategories.includes(shop.category as ShopCategory)
-      );
-      setFilteredShops(filtered);
-    }
-  }, [shops, selectedCategories]);
+    const categoryFiltered = selectedCategories.includes('all')
+      ? shops
+      : shops.filter((shop) => selectedCategories.includes(shop.category as ShopCategory));
+
+    // Apply vicinity filter only if we have user location.
+    const vicinityFiltered = userLocation
+      ? categoryFiltered.filter((shop) => {
+          const d = distanceKm(userLocation, shop.location);
+          return d <= vicinityKm;
+        })
+      : categoryFiltered;
+
+    setFilteredShops(vicinityFiltered);
+  }, [shops, selectedCategories, userLocation, vicinityKm]);
 
   // Get user's current location
   useEffect(() => {
@@ -218,11 +241,37 @@ export default function MapPage() {
               </div>
             </div>
           ) : (
-            <ShopMap
-              shops={filteredShops}
-              userLocation={userLocation}
-              className="w-full h-full"
-            />
+            <>
+              <ShopMap
+                shops={filteredShops}
+                userLocation={userLocation}
+                className="w-full h-full"
+              />
+
+              {/* Vicinity slider overlay */}
+              <div className="absolute left-3 right-3 bottom-20 md:bottom-24 z-10">
+                <div className="rounded-xl border bg-white/95 backdrop-blur px-4 py-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <Label className="text-sm font-medium">Distance</Label>
+                    <div className="text-sm text-muted-foreground tabular-nums">
+                      Up to <span className="font-semibold text-foreground">{vicinityKm}</span> km
+                    </div>
+                  </div>
+                  <Slider
+                    value={[vicinityKm]}
+                    min={1}
+                    max={20}
+                    step={1}
+                    onValueChange={(v) => setVicinityKm(v[0] ?? 5)}
+                  />
+                  {!userLocation && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Turn on location to filter shops by distance.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
 
