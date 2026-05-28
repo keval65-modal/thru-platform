@@ -8,7 +8,7 @@ Legacy providers (OpenClaw, Twilio) have been removed from this app.
 
 | Template name | When it is sent | Body variables (in order) |
 |---------------|-----------------|---------------------------|
-| `merchant_welcome` | After signup (phone OTP verified + vendor profile created) | 1. Merchant first name 2. Agreement URL (`{NEXT_PUBLIC_APP_URL}/merchant/agreement`) |
+| `merchant_welcome` | After signup (phone OTP verified + vendor profile created). **Retried** on agreement sign if still `pending`/`failed` | 1. Merchant first name 2. Agreement URL (`{NEXT_PUBLIC_APP_URL}/merchant/agreement`) — omit URL if `META_WHATSAPP_WELCOME_INCLUDE_URL=false` |
 | `merchant_onboarding_complete` | After merchant signs the partner agreement (v1) | 1. Merchant first name (default). Optional 2nd: dashboard URL — see env below |
 
 Create and **approve** both templates in [Meta Business Manager](https://business.facebook.com/) → WhatsApp → Message templates. The locale must match `META_WHATSAPP_DEFAULT_LOCALE` (default `en_US`).
@@ -20,7 +20,9 @@ Create and **approve** both templates in [Meta Business Manager](https://busines
 | `META_ACCESS_TOKEN` | Yes | Permanent or system user token with `whatsapp_business_messaging` |
 | `META_PHONE_NUMBER_ID` | Yes | Phone number ID from WhatsApp → API setup |
 | `NEXT_PUBLIC_APP_URL` | Yes (prod) | e.g. `https://merchant.kiptech.in` — used in template URLs |
-| `META_WHATSAPP_DEFAULT_LOCALE` | No | Template language code (default `en_US`) |
+| `META_WHATSAPP_DEFAULT_LOCALE` | No | Template language code (default `en_US`; app retries `en`, `en_IN` on locale errors) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Required for `whatsapp_messages` logging (anon key cannot write with RLS) |
+| `META_WHATSAPP_WELCOME_INCLUDE_URL` | No | Set to `false` if `merchant_welcome` has only **one** body variable (name). Default sends name + agreement URL |
 | `META_WHATSAPP_ONBOARDING_COMPLETE_TEMPLATE` | No | Override template name (default `merchant_onboarding_complete`) |
 | `META_WHATSAPP_ONBOARDING_COMPLETE_INCLUDE_URL` | No | Set to `true` if the onboarding-complete template has **two** body variables (name + dashboard URL) |
 
@@ -49,11 +51,21 @@ order by created_at desc
 limit 20;
 ```
 
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---------|----------------|
+| Row stuck at `pending`, null `api_response` | Serverless timed out before Meta returned — redeploy; signup page now uses `maxDuration = 60` |
+| No row in `whatsapp_messages` | `SUPABASE_SERVICE_ROLE_KEY` missing on Vercel, or table not created |
+| Row `failed`, Graph code `132000` / parameter error | Template body variable count does not match code — set `META_WHATSAPP_WELCOME_INCLUDE_URL` / `META_WHATSAPP_ONBOARDING_COMPLETE_INCLUDE_URL` |
+| Row `sent` but no WhatsApp on phone | WABA still in **development** mode — add recipient as test number in Meta |
+| Logs show `Skip: phone_verified is false` | Run `whatsapp-messages-schema.sql` and ensure signup sets `phone_verified` |
+
 ## Testing
 
-1. Configure env vars on **Production** in [thru-vendor-dashboard](https://vercel.com/keval65-modals-projects/thru-vendor-dashboard).
+1. Configure env vars on **Production** in [thru-vendor-dashboard](https://vercel.com/keval65-modals-projects/thru-vendor-dashboard) — especially `META_*`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_APP_URL`.
 2. Add test phone numbers in Meta if the WABA is still in development mode.
-3. **Welcome:** complete a new signup at `/signup` → expect `merchant_welcome` and a row in `whatsapp_messages`.
+3. **Welcome:** complete a new signup at `/signup` → expect `merchant_welcome` and a row in `whatsapp_messages` with `status = sent`.
 4. **Onboarding complete:** sign `/merchant/agreement` → expect `merchant_onboarding_complete` and a second row (different `template_name`).
 
 ## Direct API test (optional)

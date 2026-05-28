@@ -1,10 +1,11 @@
-import { getSupabaseDbClient } from '@/lib/supabase-auth';
+import { getSupabaseServiceDbClient, isSupabaseServiceRoleConfigured } from '@/lib/supabase-auth';
 import { normalizePhoneE164 } from '@/lib/phone-e164';
 import { sendTemplateMessage } from '@/services/whatsapp/sendTemplateMessage';
 import {
   appUrl,
   defaultTemplateLanguage,
   extractMetaMessageId,
+  isMetaConfigured,
   ownerFirstName,
 } from '@/services/whatsapp/waba-utils';
 
@@ -40,7 +41,6 @@ export async function sendMerchantOnboardingComplete(input: {
   phoneE164: string;
   ownerName: string;
 }): Promise<void> {
-  const db = getSupabaseDbClient();
   const phoneE164 = normalizePhoneE164(input.phoneE164);
   const templateName = onboardingCompleteTemplateName();
 
@@ -48,7 +48,24 @@ export async function sendMerchantOnboardingComplete(input: {
     merchantId: input.merchantId,
     phoneSuffix: phoneE164.slice(-4),
     template: templateName,
+    metaConfigured: isMetaConfigured(),
+    serviceRole: isSupabaseServiceRoleConfigured(),
   });
+
+  if (!isMetaConfigured()) {
+    console.error(
+      '[merchant-onboarding-complete] Skip: META_ACCESS_TOKEN or META_PHONE_NUMBER_ID missing'
+    );
+    return;
+  }
+
+  const db = getSupabaseServiceDbClient();
+  if (!db) {
+    console.error(
+      '[merchant-onboarding-complete] Skip: SUPABASE_SERVICE_ROLE_KEY missing — cannot log sends'
+    );
+    return;
+  }
 
   try {
     let rowId: string | null = null;
@@ -90,8 +107,7 @@ export async function sendMerchantOnboardingComplete(input: {
         );
         return;
       }
-    }
-    if (insErr) {
+    } else if (insErr) {
       console.warn(
         '[merchant-onboarding-complete] whatsapp_messages insert failed (continuing send):',
         insErr.message
@@ -147,7 +163,14 @@ export async function sendMerchantOnboardingComplete(input: {
         merchantId: input.merchantId,
         templateName,
         httpStatus: result.status,
+        locale: result.languageCode,
         data: result.data,
+      });
+    } else {
+      console.log('[merchant-onboarding-complete] Sent', {
+        merchantId: input.merchantId,
+        metaMessageId: metaId,
+        locale: result.languageCode,
       });
     }
   } catch (e: unknown) {

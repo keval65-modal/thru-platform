@@ -1,7 +1,9 @@
-
 import { SignupForm } from '@/components/auth/SignupForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
+
+/** Signup server action runs WhatsApp + storage; allow enough time on Vercel. */
+export const maxDuration = 60;
 
 export default async function SignupPage() {
   return (

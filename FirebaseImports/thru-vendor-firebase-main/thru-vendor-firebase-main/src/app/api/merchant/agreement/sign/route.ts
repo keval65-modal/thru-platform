@@ -12,6 +12,10 @@ import { generateAgreementPdfFromTemplate } from '@/lib/agreement-pdf-lib';
 import { signatureMatchesLegalName } from '@/lib/agreement-signing-utils';
 import { normalizePhoneE164 } from '@/lib/phone-e164';
 import { sendMerchantOnboardingComplete } from '@/services/whatsapp/sendMerchantOnboardingComplete';
+import {
+  merchantWelcomeNeedsRetry,
+  sendMerchantWelcomeAfterVerification,
+} from '@/services/whatsapp/sendMerchantWelcomeAfterVerification';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -217,6 +221,24 @@ export async function POST(req: NextRequest) {
   });
 
   const phoneE164 = normalizePhoneE164(phone);
+
+  try {
+    if (await merchantWelcomeNeedsRetry(merchantId)) {
+      console.log('[agreement/sign] Retrying merchant_welcome WhatsApp (awaiting)...', { merchantId });
+      await sendMerchantWelcomeAfterVerification({
+        merchantId,
+        phoneE164,
+        ownerName,
+        skipPhoneVerifiedCheck: true,
+      });
+      console.log('[agreement/sign] merchant_welcome WhatsApp finished');
+    }
+  } catch (e: unknown) {
+    console.warn(
+      '[agreement/sign] merchant_welcome WhatsApp task failed:',
+      e instanceof Error ? e.message : e
+    );
+  }
 
   console.log('[agreement/sign] Sending merchant_onboarding_complete WhatsApp (awaiting)...', {
     merchantId,

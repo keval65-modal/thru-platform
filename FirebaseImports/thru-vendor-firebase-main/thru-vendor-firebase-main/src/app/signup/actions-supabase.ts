@@ -550,6 +550,8 @@ export async function handleSignupSupabase(
         merchantId: uid,
         phoneE164: phoneForWelcome,
         ownerName: vendorData.ownerName,
+        skipPhoneVerifiedCheck: true,
+        whatsappConsent,
       });
       console.log('[signup] merchant_welcome WhatsApp finished');
     } catch (e: unknown) {

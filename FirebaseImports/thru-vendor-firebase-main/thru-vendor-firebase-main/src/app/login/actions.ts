@@ -69,14 +69,18 @@ export async function handleLogin(
       };
     }
 
-    const db = getSupabaseDbClient();
-    const signed = await merchantHasSignedAgreement(db, user.id);
-    if (!signed) {
-      return {
-        success: false,
-        error:
-          'You have not signed the merchant agreement yet. Please sign up again to continue, or use Cancel on the agreement page if you want to start over.',
-      };
+    // Agreement signing is required for vendors, but not for the platform admin account.
+    const isAdmin = vendor.role === 'admin';
+    if (!isAdmin) {
+      const db = getSupabaseDbClient();
+      const signed = await merchantHasSignedAgreement(db, user.id);
+      if (!signed) {
+        return {
+          success: false,
+          error:
+            'You have not signed the merchant agreement yet. Please sign up again to continue, or use Cancel on the agreement page if you want to start over.',
+        };
+      }
     }
 
     const cookieStore = cookies();
@@ -101,8 +105,6 @@ export async function handleLogin(
     }
     
     // Return admin status - client will handle redirect
-    const isAdmin = vendor.role === 'admin';
-    
     return { success: true, isAdmin, supabaseSession };
 
   } catch (error: any) {

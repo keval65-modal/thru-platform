@@ -5,6 +5,8 @@
  * Env: META_ACCESS_TOKEN, META_PHONE_NUMBER_ID
  */
 
+import { templateLanguageCandidates } from '@/services/whatsapp/waba-utils';
+
 export const META_WHATSAPP_GRAPH_VERSION = 'v22.0';
 
 /** Successful send shape from Graph `/{phone-number-id}/messages`. */
@@ -52,6 +54,8 @@ export type SendTemplateMessageInput = {
 export type SendTemplateMessageResult = {
   ok: boolean;
   status: number;
+  /** Locale that succeeded, or the last locale attempted. */
+  languageCode: string;
   /** Full parsed JSON from Graph (success or error payload). */
   data: MetaWhatsAppMessagesResponse | Record<string, unknown>;
 };
@@ -67,7 +71,10 @@ function normalizeBodyParameters(
   );
 }
 
-function buildRequestPayload(input: SendTemplateMessageInput): Record<string, unknown> {
+function buildRequestPayload(
+  input: SendTemplateMessageInput,
+  languageCode: string
+): Record<string, unknown> {
   const graphParameters = normalizeBodyParameters(input.parameters);
   const components =
     graphParameters && graphParameters.length > 0
@@ -80,27 +87,40 @@ function buildRequestPayload(input: SendTemplateMessageInput): Record<string, un
     type: 'template',
     template: {
       name: input.templateName,
-      language: { code: input.languageCode },
+      language: { code: languageCode },
       ...(components ? { components } : {}),
     },
   };
 }
 
+function graphError(data: unknown): MetaWhatsAppMessagesError['error'] | undefined {
+  if (!data || typeof data !== 'object' || !('error' in data)) return undefined;
+  const err = (data as MetaWhatsAppMessagesError).error;
+  return err && typeof err === 'object' ? err : undefined;
+}
+
+/** Retry with another locale when the template exists but this translation does not. */
+export function isRetryableTemplateLocaleError(result: SendTemplateMessageResult): boolean {
+  if (result.ok) return false;
+  const err = graphError(result.data);
+  const code = err?.code;
+  const msg = (err?.message || '').toLowerCase();
+  if (code === 132001 || code === 132005 || code === 132015) return true;
+  if (msg.includes('template name does not exist in the translation')) return true;
+  if (msg.includes('template does not exist in language')) return true;
+  if (msg.includes('locale')) return true;
+  return false;
+}
+
 function logTemplateFailure(
-  context: { templateName: string; toDigits: string; status: number },
+  context: { templateName: string; toDigits: string; status: number; locale: string },
   data: unknown
 ): void {
-  const err =
-    data &&
-    typeof data === 'object' &&
-    'error' in data &&
-    data.error &&
-    typeof (data as MetaWhatsAppMessagesError).error === 'object'
-      ? (data as MetaWhatsAppMessagesError).error
-      : undefined;
+  const err = graphError(data);
 
   console.error('[whatsapp-cloud] Template message failed', {
     template: context.templateName,
+    locale: context.locale,
     toSuffix: context.toDigits.slice(-4),
     httpStatus: context.status,
     graphMessage: err?.message,
@@ -116,8 +136,61 @@ function logConfigOrValidationFailure(message: string, extra?: Record<string, un
   console.error('[whatsapp-cloud] ' + message, extra ?? {});
 }
 
+async function sendTemplateMessageOnce(
+  input: SendTemplateMessageInput,
+  languageCode: string,
+  token: string,
+  phoneNumberId: string,
+  toDigits: string
+): Promise<SendTemplateMessageResult> {
+  const url = `https://graph.facebook.com/${META_WHATSAPP_GRAPH_VERSION}/${phoneNumberId}/messages`;
+  const payload = buildRequestPayload(input, languageCode);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const rawText = await res.text();
+  let data: MetaWhatsAppMessagesResponse | Record<string, unknown>;
+  try {
+    data = rawText ? (JSON.parse(rawText) as MetaWhatsAppMessagesResponse) : {};
+  } catch {
+    logTemplateFailure(
+      { templateName: input.templateName, toDigits, status: res.status, locale: languageCode },
+      { parseError: true, bodySnippet: rawText.slice(0, 500) }
+    );
+    return {
+      ok: false,
+      status: res.status,
+      languageCode,
+      data: {
+        error: {
+          message: 'Failed to parse JSON response from WhatsApp Cloud API',
+          bodySnippet: rawText.slice(0, 500),
+        },
+      },
+    };
+  }
+
+  if (!res.ok) {
+    logTemplateFailure(
+      { templateName: input.templateName, toDigits, status: res.status, locale: languageCode },
+      data
+    );
+    return { ok: false, status: res.status, languageCode, data };
+  }
+
+  return { ok: true, status: res.status, languageCode, data };
+}
+
 /**
  * Send a pre-approved WhatsApp template via Meta Cloud API.
+ * Tries fallback locales when Meta reports a missing translation.
  */
 export async function sendTemplateMessage(
   input: SendTemplateMessageInput
@@ -132,6 +205,7 @@ export async function sendTemplateMessage(
     return {
       ok: false,
       status: 0,
+      languageCode: input.languageCode,
       data: { error: { message: msg } },
     };
   }
@@ -143,56 +217,40 @@ export async function sendTemplateMessage(
     return {
       ok: false,
       status: 0,
+      languageCode: input.languageCode,
       data: { error: { message: msg } },
     };
   }
 
-  const url = `https://graph.facebook.com/${META_WHATSAPP_GRAPH_VERSION}/${phoneNumberId}/messages`;
-  const payload = buildRequestPayload({ ...input, to: toDigits });
-
+  const locales = templateLanguageCandidates(input.languageCode);
   console.log('[whatsapp-cloud] Sending template', {
     template: input.templateName,
-    locale: input.languageCode,
+    locales,
+    paramCount: input.parameters?.length ?? 0,
     toSuffix: toDigits.slice(-4),
   });
 
+  let lastResult: SendTemplateMessageResult | null = null;
+
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const rawText = await res.text();
-    let data: MetaWhatsAppMessagesResponse | Record<string, unknown>;
-    try {
-      data = rawText ? (JSON.parse(rawText) as MetaWhatsAppMessagesResponse) : {};
-    } catch {
-      logTemplateFailure(
-        { templateName: input.templateName, toDigits, status: res.status },
-        { parseError: true, bodySnippet: rawText.slice(0, 500) }
-      );
-      return {
-        ok: false,
-        status: res.status,
-        data: {
-          error: {
-            message: 'Failed to parse JSON response from WhatsApp Cloud API',
-            bodySnippet: rawText.slice(0, 500),
-          },
-        },
-      };
+    for (const locale of locales) {
+      const result = await sendTemplateMessageOnce(input, locale, token, phoneNumberId, toDigits);
+      if (result.ok) {
+        if (locale !== input.languageCode) {
+          console.log('[whatsapp-cloud] Sent using fallback locale', {
+            template: input.templateName,
+            requested: input.languageCode,
+            used: locale,
+          });
+        }
+        return result;
+      }
+      lastResult = result;
+      if (!isRetryableTemplateLocaleError(result)) {
+        return result;
+      }
     }
-
-    if (!res.ok) {
-      logTemplateFailure({ templateName: input.templateName, toDigits, status: res.status }, data);
-      return { ok: false, status: res.status, data };
-    }
-
-    return { ok: true, status: res.status, data };
+    return lastResult!;
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     console.error('[whatsapp-cloud] Network or runtime error sending template', {
@@ -203,6 +261,7 @@ export async function sendTemplateMessage(
     return {
       ok: false,
       status: 0,
+      languageCode: input.languageCode,
       data: { error: { message } },
     };
   }

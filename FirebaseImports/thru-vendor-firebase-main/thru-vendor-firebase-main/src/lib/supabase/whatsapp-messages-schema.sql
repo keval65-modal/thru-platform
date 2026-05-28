@@ -17,7 +17,6 @@ create table if not exists public.whatsapp_messages (
   created_at timestamptz not null default now()
 );
 
-comment on table public.whatsapp_messages is 'Outbound WhatsApp Cloud API sends; api_response stores full Graph JSON for debugging and delivery tracking.';
 comment on column public.whatsapp_messages.status is 'e.g. pending, sent, failed';
 
 -- At most one row per merchant per template (duplicate send prevention).
@@ -39,3 +38,7 @@ create index if not exists idx_whatsapp_messages_created_at
   on public.whatsapp_messages (created_at desc);
 
 alter table public.whatsapp_messages enable row level security;
+
+-- Server sends use SUPABASE_SERVICE_ROLE_KEY (bypasses RLS). No anon/authenticated policies required.
+comment on table public.whatsapp_messages is
+  'Outbound WhatsApp log. Inserts/updates must use service role from Vercel (see WHATSAPP_SETUP.md).';

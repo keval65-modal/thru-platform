@@ -88,6 +88,15 @@ export function getSupabaseDbClient() {
   return supabaseServiceServerClient ?? supabaseAnonServerClient;
 }
 
+/** Service-role client for server-only writes (WhatsApp log, admin). Returns null if not configured. */
+export function getSupabaseServiceDbClient() {
+  return supabaseServiceServerClient;
+}
+
+export function isSupabaseServiceRoleConfigured(): boolean {
+  return Boolean(supabaseServiceServerClient);
+}
+
 export async function linkSupabaseUserPhone(
   userId: string,
   phoneNumber: string

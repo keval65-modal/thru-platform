@@ -1,11 +1,11 @@
-import { getSupabaseDbClient } from '@/lib/supabase-auth';
+import { getSupabaseServiceDbClient, isSupabaseServiceRoleConfigured } from '@/lib/supabase-auth';
 import { normalizePhoneE164 } from '@/lib/phone-e164';
 import { sendTemplateMessage } from '@/services/whatsapp/sendTemplateMessage';
 import {
-  appUrl,
   defaultTemplateLanguage,
   extractMetaMessageId,
-  ownerFirstName,
+  isMetaConfigured,
+  welcomeTemplateParameters,
 } from '@/services/whatsapp/waba-utils';
 
 /** WABA-approved template sent once after phone verification at signup (and retry after sign if failed). */
@@ -13,37 +13,64 @@ const WELCOME_TEMPLATE = 'merchant_welcome';
 
 /**
  * After successful phone OTP + vendor profile creation: send `merchant_welcome` once,
- * only when `vendors.phone_verified` is true. Reserves a DB row first to prevent duplicates.
- * Does not throw; logs errors.
+ * only when `vendors.phone_verified` is true (unless skipPhoneVerifiedCheck).
+ * Reserves a DB row first to prevent duplicates. Does not throw; logs errors.
  */
 export async function sendMerchantWelcomeAfterVerification(input: {
   merchantId: string;
   phoneE164: string;
   ownerName: string;
+  /** Set when signup just verified OTP — avoids false skip if phone_verified column lags. */
+  skipPhoneVerifiedCheck?: boolean;
+  /** When false, do not send (merchant did not opt in). */
+  whatsappConsent?: boolean;
 }): Promise<void> {
-  const db = getSupabaseDbClient();
   const phoneE164 = normalizePhoneE164(input.phoneE164);
 
   console.log('[merchant-welcome] Start', {
     merchantId: input.merchantId,
     phoneSuffix: phoneE164.slice(-4),
     template: WELCOME_TEMPLATE,
+    metaConfigured: isMetaConfigured(),
+    serviceRole: isSupabaseServiceRoleConfigured(),
   });
 
-  try {
-    const { data: vendor, error: vErr } = await db
-      .from('vendors')
-      .select('id, phone_verified')
-      .eq('id', input.merchantId)
-      .maybeSingle();
+  if (input.whatsappConsent === false) {
+    console.warn('[merchant-welcome] Skip: merchant did not consent to WhatsApp');
+    return;
+  }
 
-    if (vErr) {
-      console.error('[merchant-welcome] Failed to load vendor:', vErr.message);
-      return;
-    }
-    if (vendor && vendor.phone_verified === false) {
-      console.warn('[merchant-welcome] Skip: phone_verified is false for merchant', input.merchantId);
-      return;
+  if (!isMetaConfigured()) {
+    console.error(
+      '[merchant-welcome] Skip: META_ACCESS_TOKEN or META_PHONE_NUMBER_ID missing on server'
+    );
+    return;
+  }
+
+  const db = getSupabaseServiceDbClient();
+  if (!db) {
+    console.error(
+      '[merchant-welcome] Skip: SUPABASE_SERVICE_ROLE_KEY missing — cannot log sends or verify vendor'
+    );
+    return;
+  }
+
+  try {
+    if (!input.skipPhoneVerifiedCheck) {
+      const { data: vendor, error: vErr } = await db
+        .from('vendors')
+        .select('id, phone_verified')
+        .eq('id', input.merchantId)
+        .maybeSingle();
+
+      if (vErr) {
+        console.error('[merchant-welcome] Failed to load vendor:', vErr.message);
+        return;
+      }
+      if (vendor && vendor.phone_verified === false) {
+        console.warn('[merchant-welcome] Skip: phone_verified is false for merchant', input.merchantId);
+        return;
+      }
     }
 
     let rowId: string | null = null;
@@ -82,8 +109,7 @@ export async function sendMerchantWelcomeAfterVerification(input: {
         console.warn('[merchant-welcome] Skip duplicate: welcome already recorded for merchant', input.merchantId);
         return;
       }
-    }
-    if (insErr) {
+    } else if (insErr) {
       console.warn('[merchant-welcome] whatsapp_messages insert failed (continuing send):', insErr.message);
     } else if (reserved?.id) {
       rowId = reserved.id as string;
@@ -95,7 +121,7 @@ export async function sendMerchantWelcomeAfterVerification(input: {
         to: phoneE164,
         templateName: WELCOME_TEMPLATE,
         languageCode: defaultTemplateLanguage(),
-        parameters: [ownerFirstName(input.ownerName), appUrl('/merchant/agreement')],
+        parameters: welcomeTemplateParameters(input.ownerName),
       });
     } catch (sendErr: unknown) {
       const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
@@ -135,16 +161,38 @@ export async function sendMerchantWelcomeAfterVerification(input: {
       console.error('[merchant-welcome] Template send failed', {
         merchantId: input.merchantId,
         httpStatus: result.status,
+        locale: result.languageCode,
         data: result.data,
       });
     } else {
       console.log('[merchant-welcome] Sent', {
         merchantId: input.merchantId,
         metaMessageId: metaId,
+        locale: result.languageCode,
       });
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[merchant-welcome] Unexpected error:', msg);
   }
+}
+
+/** True when welcome was never successfully sent (missing, pending, or failed). */
+export async function merchantWelcomeNeedsRetry(merchantId: string): Promise<boolean> {
+  const db = getSupabaseServiceDbClient();
+  if (!db) return false;
+
+  const { data, error } = await db
+    .from('whatsapp_messages')
+    .select('status')
+    .eq('merchant_id', merchantId)
+    .eq('template_name', WELCOME_TEMPLATE)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[merchant-welcome] Could not read prior welcome row:', error.message);
+    return true;
+  }
+  if (!data) return true;
+  return data.status === 'pending' || data.status === 'failed';
 }
