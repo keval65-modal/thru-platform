@@ -48,7 +48,9 @@ async function setupAdminUser() {
       throw listError;
     }
 
-    let adminUser = existingUsers.users.find(u => u.email === ADMIN_EMAIL);
+    let adminUser = existingUsers.users.find(
+      (u) => (u.email || '').trim().toLowerCase() === ADMIN_EMAIL.toLowerCase()
+    );
 
     if (adminUser) {
       console.log(`✅ Admin user already exists in Auth (ID: ${adminUser.id})`);
@@ -116,6 +118,42 @@ async function setupAdminUser() {
         console.log('✅ Role is already set to admin');
       }
     } else {
+      // If another row exists with the same email, reconcile it to this auth user id.
+      const { data: vendorByEmail, error: vendorByEmailErr } = await supabase
+        .from('vendors')
+        .select('id, role, email')
+        .eq('email', ADMIN_EMAIL)
+        .maybeSingle();
+
+      if (vendorByEmailErr && vendorByEmailErr.code !== 'PGRST116') {
+        console.error('❌ Error checking vendor by email:', vendorByEmailErr.message);
+        throw vendorByEmailErr;
+      }
+
+      if (vendorByEmail?.id && vendorByEmail.id !== adminUser.id) {
+        console.log(
+          `⚠️ Found existing vendors row for ${ADMIN_EMAIL} with different id (${vendorByEmail.id}). Reconciling to auth id ${adminUser.id}...`
+        );
+
+        // Try updating the primary key to match auth user id.
+        const { error: pkUpdateErr } = await supabase
+          .from('vendors')
+          .update({ id: adminUser.id, role: 'admin' })
+          .eq('id', vendorByEmail.id);
+
+        if (pkUpdateErr) {
+          console.warn('⚠️ Could not update vendors.id (will delete & recreate):', pkUpdateErr.message);
+          const { error: delErr } = await supabase.from('vendors').delete().eq('id', vendorByEmail.id);
+          if (delErr) {
+            console.error('❌ Failed to delete conflicting vendor row:', delErr.message);
+            throw delErr;
+          }
+          console.log('✅ Deleted conflicting vendor row');
+        } else {
+          console.log('✅ Reconciled vendor row to auth user id');
+        }
+      }
+
       // Step 4: Create vendor profile with admin role
       console.log('\n📋 Step 4: Creating vendor profile with admin role...');
       const now = new Date().toISOString();
@@ -140,7 +178,7 @@ async function setupAdminUser() {
 
       const { data: vendorDataResult, error: vendorError } = await supabase
         .from('vendors')
-        .insert([vendorData])
+        .upsert([vendorData], { onConflict: 'id' })
         .select()
         .single();
 
