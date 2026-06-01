@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   DemoOrderLine,
+  DemoPrescription,
   DemoVendorType,
   createDemoOrder,
   getCatalog,
@@ -24,9 +25,10 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     vendorType?: DemoVendorType;
+    prescription?: DemoPrescription;
   };
   const vendorType = body.vendorType ?? "grocery";
-  const state = placeDemoOrder(vendorType);
+  const state = placeDemoOrder(vendorType, body.prescription);
   return NextResponse.json(state);
 }
 

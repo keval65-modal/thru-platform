@@ -33,6 +33,14 @@ git diff --quiet $VERCEL_GIT_PREVIOUS_SHA $VERCEL_GIT_COMMIT_SHA -- FirebaseImpo
 
 **If production shows old UI:** open Deployments — **Canceled** = skipped; the last **Ready** deployment is still live. User/landing may show a deployment row for every push even when only vendor code changed.
 
+## Git pushes not creating deployments
+
+If **no deployment rows appear** after pushing to `main`, the Vercel ↔ GitHub integration is likely disconnected.
+
+1. **GitHub Actions (recommended):** Add repo secret `VERCEL_TOKEN` ([create token](https://vercel.com/account/tokens)), then pushes to `main` run `.github/workflows/vercel-production.yml`. You can also trigger it manually under **Actions → Vercel Production Deploy → Run workflow** (deploys all three apps).
+2. **Reconnect Git in Vercel:** Project → Settings → Git → connect `keval65-modal/thru-platform`, branch `main`.
+3. **Manual CLI** (from repo root, after `vercel login`):
+
 ## Manual CLI deploy (required when Git deploys are canceled)
 
 Deploy from the **monorepo root** (`thru-platform`), not from inside the app folder (avoids doubled `rootDirectory` paths):

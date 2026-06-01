@@ -17,6 +17,15 @@ export interface DemoOrderLine extends DemoCatalogItem {
   proposedPrice?: number;
   proposedPack?: string;
   vendorNote?: string;
+  alternativeName?: string;
+}
+
+export interface DemoPrescription {
+  imageDataUri?: string;
+  prescriptionDate?: string;
+  dateValid?: boolean;
+  doctorName?: string;
+  medicines?: { id: string; name: string; quantity: number; dosage?: string }[];
 }
 
 export interface DemoOrder {
@@ -26,6 +35,7 @@ export interface DemoOrder {
   items: DemoOrderLine[];
   amount: number;
   sessionCode: string;
+  prescription?: DemoPrescription;
 }
 
 export const vendorTypeOptions: {
@@ -157,9 +167,23 @@ export function buildOrderId(
 export function createDemoOrder(
   vendorType: DemoVendorType,
   arrivalMinutes: number,
-  sessionCode: string
+  sessionCode: string,
+  prescription?: DemoPrescription
 ): DemoOrder {
-  const items = getCatalog(vendorType).map<DemoOrderLine>((item) => ({
+  const rxMedicines = prescription?.medicines ?? [];
+  const catalogItems = getCatalog(vendorType);
+  const baseItems =
+    vendorType === 'medical' && rxMedicines.length > 0
+      ? rxMedicines.map((m, i) => ({
+          id: m.id || `rx-${i}`,
+          name: m.name,
+          quantity: String(m.quantity),
+          basePrice: 35 + i * 10,
+          brands: ['Generic', 'Branded'],
+        }))
+      : catalogItems;
+
+  const items = baseItems.map<DemoOrderLine>((item) => ({
     ...item,
     available: true,
     proposedPrice: item.basePrice,
@@ -179,6 +203,7 @@ export function createDemoOrder(
     items,
     amount,
     sessionCode: normalizeSessionCode(sessionCode),
+    prescription: vendorType === 'medical' ? prescription : undefined,
   };
 }
 

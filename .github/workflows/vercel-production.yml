@@ -1,0 +1,64 @@
+# Deploy changed monorepo apps to Vercel production.
+# Required repo secret: VERCEL_TOKEN (https://vercel.com/account/tokens)
+#
+# Uses project rootDirectory configured on each Vercel project — run from repo root.
+
+name: Vercel Production Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      landing: ${{ steps.filter.outputs.landing }}
+      user: ${{ steps.filter.outputs.user }}
+      vendor: ${{ steps.filter.outputs.vendor }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            landing:
+              - 'FirebaseImports/thru-landing/**'
+            user:
+              - 'FirebaseImports/thru-user-app29082025-master/thru-user-app29082025-master/**'
+            vendor:
+              - 'FirebaseImports/thru-vendor-firebase-main/thru-vendor-firebase-main/**'
+
+  deploy-landing:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.landing == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy thru-landing → thru.kiptech.in
+        run: npx vercel@latest deploy --prod --yes --scope keval65-modals-projects --project thru-landing --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+  deploy-user:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.user == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy user app → app.kiptech.in
+        run: npx vercel@latest deploy --prod --yes --scope keval65-modals-projects --project thru-user-app29082025-master --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+  deploy-vendor:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.vendor == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy vendor app → merchant.kiptech.in
+        run: npx vercel@latest deploy --prod --yes --scope keval65-modals-projects --project thru-vendor-dashboard --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
