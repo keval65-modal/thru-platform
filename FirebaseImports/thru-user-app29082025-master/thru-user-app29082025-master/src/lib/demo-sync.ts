@@ -1,4 +1,4 @@
-import { DemoOrder, DemoOrderLine, DemoVendorType, createDemoOrder } from "./demo-data";
+import { DemoOrder, DemoOrderLine, DemoPrescription, DemoVendorType, createDemoOrder } from "./demo-data";
 
 export type DemoStatus =
   | "idle"
@@ -41,8 +41,11 @@ export function resetDemoState(): DemoState {
   return store;
 }
 
-export function placeDemoOrder(vendorType: DemoVendorType): DemoState {
-  store.order = createDemoOrder(vendorType, 10, "demo-default");
+export function placeDemoOrder(
+  vendorType: DemoVendorType,
+  prescription?: DemoPrescription
+): DemoState {
+  store.order = createDemoOrder(vendorType, 10, "demo-default", prescription);
   store.status = "placed";
   store.vendorNote = undefined;
   store.arrivalTotalSeconds = 600;

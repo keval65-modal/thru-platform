@@ -1,7 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { useWatch, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
+import {
+  useFormContext,
+  useWatch,
+  type Control,
+  type FieldPath,
+  type FieldValues,
+} from 'react-hook-form';
 import {
   FormControl,
   FormDescription,
@@ -36,6 +42,13 @@ export function BankAccountNumberFields<T extends FieldValues>({
   const accountNumber = useWatch({ control, name: accountName });
   const confirmAccountNumber = useWatch({ control, name: confirmName });
   const matched = accountsMatch(String(accountNumber ?? ''), String(confirmAccountNumber ?? ''));
+
+  const { clearErrors } = useFormContext<T>();
+  React.useEffect(() => {
+    if (matched) {
+      clearErrors(confirmName);
+    }
+  }, [matched, clearErrors, confirmName]);
 
   return (
     <>

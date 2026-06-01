@@ -26,6 +26,42 @@ export interface PlacedOrder {
   manuallyConfirmedTravel?: boolean;
 }
 
+// This describes a single item within a vendor's portion of the order.
+export interface OrderItemDetail {
+  itemId: string;
+  name: string;
+  quantity: number;
+  pricePerItem: number;
+  totalPrice: number;
+  imageUrl?: string;
+  dataAiHint?: string;
+  details?: string;
+  /** Medicine: alternative suggested by pharmacy */
+  alternativeName?: string;
+  available?: boolean;
+  vendorNote?: string;
+}
+
+/** Prescription attached to pharmacy orders (stored in vendor_portions JSON). */
+export interface PrescriptionMetadata {
+  imageDataUri?: string;
+  prescriptionDate?: string;
+  dateValid?: boolean;
+  doctorName?: string;
+  aiRawNotes?: string;
+  medicines?: {
+    id: string;
+    name: string;
+    dosage?: string;
+    quantity: number;
+    available?: boolean;
+    alternativeName?: string;
+    pricePerItem?: number;
+    totalPrice?: number;
+    vendorNote?: string;
+  }[];
+}
+
 // Each order document contains an array of these portions, one for each vendor involved.
 export interface VendorOrderPortion {
   vendorId: string; 
@@ -37,16 +73,7 @@ export interface VendorOrderPortion {
   rejectionReason?: string; // Reason for cancellation/rejection 
   items: OrderItemDetail[];
   vendorSubtotal: number;
-}
-
-// This describes a single item within a vendor's portion of the order.
-export interface OrderItemDetail {
-  itemId: string;
-  name: string;
-  quantity: number;
-  pricePerItem: number;
-  totalPrice: number;
-  imageUrl?: string;
-  dataAiHint?: string;
-  details?: string;
+  /** medicine | grocery | food */
+  orderType?: string;
+  prescription?: PrescriptionMetadata;
 }

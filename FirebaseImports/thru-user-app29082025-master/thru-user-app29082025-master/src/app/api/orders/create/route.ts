@@ -14,7 +14,19 @@ const OrderItemSchema = z.object({
   imageUrl: z.string().optional().nullable(),
   details: z.string().optional().nullable(),
   dataAiHint: z.string().optional().nullable(),
+  alternativeName: z.string().optional().nullable(),
+  available: z.boolean().optional(),
+  vendorNote: z.string().optional().nullable(),
 })
+
+const PrescriptionSchema = z.object({
+  imageDataUri: z.string().optional(),
+  prescriptionDate: z.string().optional(),
+  dateValid: z.boolean().optional(),
+  doctorName: z.string().optional(),
+  aiRawNotes: z.string().optional(),
+  medicines: z.array(z.any()).optional(),
+}).optional().nullable()
 
 const VendorPortionSchema = z.object({
   vendorId: z.string(),
@@ -29,6 +41,8 @@ const VendorPortionSchema = z.object({
   vendorSubtotal: z.number(),
   items: z.array(OrderItemSchema),
   prepTime: z.number().optional(),
+  orderType: z.string().optional().nullable(),
+  prescription: PrescriptionSchema,
 })
 
 const OrderSchema = z.object({

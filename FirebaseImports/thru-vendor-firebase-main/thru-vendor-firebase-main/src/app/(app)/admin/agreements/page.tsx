@@ -206,6 +206,56 @@ export default function AdminAgreementsPage() {
                 </div>
 
                 <div>
+                  <h4 className="text-sm font-semibold mb-2">WhatsApp template sends</h4>
+                  {detail.whatsappSends?.length ? (
+                    <ul className="text-xs space-y-2 mb-4">
+                      {detail.whatsappSends.map((w: {
+                        id: string;
+                        template_name: string;
+                        status: string;
+                        meta_message_id: string | null;
+                        phone_number: string;
+                        created_at: string;
+                        api_response?: { error?: { message?: string; error_user_msg?: string } };
+                      }) => (
+                        <li key={w.id} className="rounded border p-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">{w.template_name}</span>
+                            <Badge
+                              variant={
+                                w.status === 'sent'
+                                  ? 'default'
+                                  : w.status === 'failed'
+                                    ? 'destructive'
+                                    : 'secondary'
+                              }
+                            >
+                              {w.status}
+                            </Badge>
+                          </div>
+                          <div className="text-muted-foreground mt-1">
+                            {w.created_at ? format(new Date(w.created_at), 'PPpp') : '—'} · …
+                            {String(w.phone_number || '').slice(-4)}
+                          </div>
+                          {w.meta_message_id && (
+                            <div className="text-muted-foreground break-all">Meta ID: {w.meta_message_id}</div>
+                          )}
+                          {w.status === 'failed' && w.api_response?.error?.message && (
+                            <div className="text-destructive mt-1 break-all">
+                              {w.api_response.error.error_user_msg || w.api_response.error.message}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mb-4">
+                      No outbound WhatsApp rows — check Vercel env (META_*), templates, and WABA test numbers.
+                    </p>
+                  )}
+                </div>
+
+                <div>
                   <h4 className="text-sm font-semibold mb-2">WhatsApp consent log</h4>
                   {detail.consents.length ? (
                     <ul className="text-xs space-y-2">

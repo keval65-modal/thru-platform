@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/admin/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,10 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { ShoppingCart, Search, Eye, CalendarIcon, Download } from 'lucide-react';
+import { ShoppingCart, Search, Eye, CalendarIcon, Download, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { adminListOrders, type AdminOrderRow } from './actions';
 
 export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -21,10 +22,48 @@ export default function OrdersPage() {
     status: 'all',
     paymentStatus: 'all',
     issueStatus: 'all',
+    category: 'all',
     dateFrom: undefined as Date | undefined,
     dateTo: undefined as Date | undefined,
   });
-  const [orders] = useState<any[]>([]); // TODO: Fetch from backend
+  const [orders, setOrders] = useState<AdminOrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await adminListOrders(searchQuery);
+      setOrders(rows);
+    } catch (e) {
+      console.error(e);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    void loadOrders();
+  }, [loadOrders]);
+
+  const filtered = orders.filter((order) => {
+    if (filters.status !== 'all' && !order.status.toLowerCase().includes(filters.status)) return false;
+    if (filters.paymentStatus !== 'all' && order.paymentStatus.toLowerCase() !== filters.paymentStatus)
+      return false;
+    if (filters.category === 'medicine' && !order.isMedicine) return false;
+    if (filters.category === 'other' && order.isMedicine) return false;
+    if (filters.issueStatus === 'open' && !order.hasIssue) return false;
+    if (filters.issueStatus === 'none' && order.hasIssue) return false;
+    if (filters.dateFrom && order.createdAt) {
+      const d = new Date(order.createdAt);
+      if (d < filters.dateFrom) return false;
+    }
+    if (filters.dateTo && order.createdAt) {
+      const d = new Date(order.createdAt);
+      if (d > filters.dateTo) return false;
+    }
+    return true;
+  });
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -108,6 +147,20 @@ export default function OrdersPage() {
               </SelectContent>
             </Select>
 
+            <Select
+              value={filters.category}
+              onValueChange={(value) => setFilters({ ...filters, category: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                <SelectItem value="medicine">Medicine / Rx</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className={cn('w-full justify-start text-left font-normal')}>
@@ -148,18 +201,32 @@ export default function OrdersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orders.length > 0 ? (
-                orders.map((order) => (
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length > 0 ? (
+                filtered.map((order) => (
                   <TableRow key={order.id}>
-                    <TableCell className="font-medium font-mono">{order.orderNumber || order.id}</TableCell>
-                    <TableCell>{order.userName || 'N/A'}</TableCell>
-                    <TableCell>{order.vendorName || 'N/A'}</TableCell>
-                    <TableCell>{order.category || 'N/A'}</TableCell>
-                    <TableCell>₹{order.amount || 0}</TableCell>
-                    <TableCell>₹{order.platformFee || 0}</TableCell>
+                    <TableCell className="font-medium font-mono">{order.orderNumber}</TableCell>
+                    <TableCell>{order.userName}</TableCell>
+                    <TableCell>{order.vendorName}</TableCell>
+                    <TableCell>
+                      {order.isMedicine ? (
+                        <Badge variant="destructive">{order.category}</Badge>
+                      ) : (
+                        order.category
+                      )}
+                    </TableCell>
+                    <TableCell>₹{order.amount.toFixed(2)}</TableCell>
+                    <TableCell>₹{order.platformFee.toFixed(2)}</TableCell>
                     <TableCell>{getStatusBadge(order.paymentStatus)}</TableCell>
                     <TableCell>{getStatusBadge(order.status)}</TableCell>
-                    <TableCell>{order.createdAt ? format(new Date(order.createdAt), 'MMM dd, HH:mm') : 'N/A'}</TableCell>
+                    <TableCell>
+                      {order.createdAt ? format(new Date(order.createdAt), 'MMM dd, HH:mm') : 'N/A'}
+                    </TableCell>
                     <TableCell>
                       {order.hasIssue ? (
                         <Badge variant="destructive">Yes</Badge>
@@ -169,7 +236,7 @@ export default function OrdersPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/admin/orders/${order.id}`}>
+                        <Link href={`/admin/orders/${encodeURIComponent(order.id)}`}>
                           <Eye className="h-4 w-4" />
                         </Link>
                       </Button>
@@ -179,7 +246,7 @@ export default function OrdersPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
-                    No orders found. Data will be loaded from backend.
+                    No orders found.
                   </TableCell>
                 </TableRow>
               )}

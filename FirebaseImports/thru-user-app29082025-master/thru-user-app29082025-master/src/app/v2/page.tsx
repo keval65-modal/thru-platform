@@ -219,6 +219,22 @@ export default function V2VendorPage() {
                 <Badge>Order ID: {order.id}</Badge>
                 <Badge variant="secondary">Shop: {order.vendorType}</Badge>
               </div>
+              {order.prescription?.imageDataUri && (
+                <div className="space-y-2 rounded-lg border p-3 bg-red-50/50">
+                  <p className="text-sm font-medium">Customer prescription</p>
+                  <img
+                    src={order.prescription.imageDataUri}
+                    alt="Prescription"
+                    className="max-h-40 rounded border object-contain bg-white"
+                  />
+                  {order.prescription.prescriptionDate && (
+                    <p className="text-xs text-muted-foreground">
+                      Date: {order.prescription.prescriptionDate}
+                      {order.prescription.dateValid ? " (valid)" : " (check validity)"}
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="divide-y rounded-lg border">
                 {items.map((item) => (
                   <div key={item.id} className="space-y-2 p-3">
@@ -268,6 +284,21 @@ export default function V2VendorPage() {
                         </Select>
                       ) : (
                         <div />
+                      )}
+                      {order.vendorType === "medical" && (
+                        <Input
+                          placeholder="Alternative medicine"
+                          value={item.alternativeName ?? ""}
+                          onChange={(e) =>
+                            pushItems(
+                              items.map((x) =>
+                                x.id === item.id
+                                  ? { ...x, alternativeName: e.target.value }
+                                  : x
+                              )
+                            )
+                          }
+                        />
                       )}
                       <Input
                         type="number"

@@ -32,7 +32,8 @@ import {
   Calendar,
   Package,
   Plus,
-  Minus
+  Minus,
+  Pill
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ import { enhancedOrderService } from "@/lib/enhanced-order-service";
 import { routeBasedShopDiscovery, RoutePoint } from "@/lib/route-based-shop-discovery";
 import { useFoodCart } from "@/hooks/useFoodCart";
 import { getShopStatus, getTodayHours } from "@/utils/operating-hours";
+import { MedicineOrderPanel } from "@/components/medicine/MedicineOrderPanel";
 
 function HomePageContent() {
   const router = useRouter();
@@ -74,7 +76,11 @@ function HomePageContent() {
 
   // Category selection states
   const [selectedCategories, setSelectedCategories] = React.useState<string[]>([]);
-  const [activeTab, setActiveTab] = React.useState<"grocery" | "food" | "vendor-request">("grocery");
+  const [activeTab, setActiveTab] = React.useState<"grocery" | "food" | "medicine" | "vendor-request">("grocery");
+  const [routeCoords, setRouteCoords] = React.useState<{
+    start: { lat: number; lng: number };
+    dest: { lat: number; lng: number };
+  } | null>(null);
 
   // Grocery states
   const [grocerySearchQuery, setGrocerySearchQuery] = React.useState("");
@@ -362,12 +368,29 @@ function HomePageContent() {
 
   // Handle category toggle
   const handleCategoryToggle = (category: string) => {
-    setSelectedCategories(prev => 
-      prev.includes(category) 
+    setSelectedCategories(prev => {
+      const next = prev.includes(category)
         ? prev.filter(c => c !== category)
-        : [...prev, category]
-    );
+        : [...prev, category];
+      if (!prev.includes(category) && category === 'medicine') {
+        setActiveTab('medicine');
+      }
+      return next;
+    });
   };
+
+  React.useEffect(() => {
+    const parseCoords = (str: string): { lat: number; lng: number } | null => {
+      const match = str.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+      if (!match) return null;
+      return { lat: parseFloat(match[1]), lng: parseFloat(match[2]) };
+    };
+    if (selectedStartLocation && selectedDestination) {
+      const start = parseCoords(selectedStartLocation);
+      const dest = parseCoords(selectedDestination);
+      if (start && dest) setRouteCoords({ start, dest });
+    }
+  }, [selectedStartLocation, selectedDestination]);
 
   // Grocery functions
   const addGroceryItem = (item: any) => {
@@ -1364,7 +1387,7 @@ function HomePageContent() {
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div 
                       className={cn(
                         "p-3 rounded-xl border-[1.5px] cursor-pointer transition-all flex items-center gap-3",
@@ -1398,6 +1421,23 @@ function HomePageContent() {
                         <div className="font-semibold text-sm">Food</div>
                       </div>
                     </div>
+
+                    <div 
+                      className={cn(
+                        "p-3 rounded-xl border-[1.5px] cursor-pointer transition-all flex items-center gap-3 col-span-2 sm:col-span-1",
+                        selectedCategories.includes("medicine") 
+                          ? "border-red-500 bg-red-500/5 shadow-sm" 
+                          : "border-border/60 bg-muted/20 hover:border-red-400/40 hover:bg-muted/40"
+                      )}
+                      onClick={() => handleCategoryToggle("medicine")}
+                    >
+                      <div className={cn("p-2 rounded-lg transition-colors", selectedCategories.includes("medicine") ? "bg-red-600 text-white" : "bg-background text-muted-foreground shadow-sm")}>
+                        <Pill className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-sm">Medicine</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1408,8 +1448,8 @@ function HomePageContent() {
             {/* Tabs for Grocery and Food */}
             <div id="grocery-food-section">
               {selectedCategories.length > 0 ? (
-                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "grocery" | "food" | "vendor-request")}>
-                <TabsList className="grid w-full grid-cols-3">
+                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "grocery" | "food" | "medicine" | "vendor-request")}>
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
                   <TabsTrigger value="grocery" disabled={!selectedCategories.includes("grocery")}>
                     <Store className="h-4 w-4 mr-2" />
                     Grocery
@@ -1417,6 +1457,10 @@ function HomePageContent() {
                   <TabsTrigger value="food" disabled={!selectedCategories.includes("food")}>
                     <Utensils className="h-4 w-4 mr-2" />
                     Food
+                  </TabsTrigger>
+                  <TabsTrigger value="medicine" disabled={!selectedCategories.includes("medicine")}>
+                    <Pill className="h-4 w-4 mr-2" />
+                    Medicine
                   </TabsTrigger>
                   <TabsTrigger value="vendor-request">
                     <Package className="h-4 w-4 mr-2" />
@@ -1748,6 +1792,15 @@ function HomePageContent() {
                       </div>
                     )}
                   </Card>
+                </TabsContent>
+
+                <TabsContent value="medicine" className="space-y-4">
+                  <MedicineOrderPanel
+                    startCoords={routeCoords?.start ?? null}
+                    destCoords={routeCoords?.dest ?? null}
+                    tripStartLabel={selectedStartLocation ?? undefined}
+                    tripDestLabel={selectedDestination ?? undefined}
+                  />
                 </TabsContent>
 
                 <TabsContent value="vendor-request" className="space-y-4">

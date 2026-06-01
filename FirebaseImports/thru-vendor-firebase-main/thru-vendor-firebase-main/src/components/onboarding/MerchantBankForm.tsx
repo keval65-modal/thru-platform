@@ -116,7 +116,7 @@ export function MerchantBankForm() {
       confirmAccountInputRef,
       form.getValues('confirmAccountNumber')
     );
-    form.setValue('confirmAccountNumber', confirmVal, { shouldValidate: false });
+    form.setValue('confirmAccountNumber', confirmVal, { shouldValidate: true, shouldDirty: true });
     void form.handleSubmit(onSubmit)(e);
   };
 

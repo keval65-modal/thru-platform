@@ -668,7 +668,7 @@ export function SignupForm() {
       confirmAccountInputRef,
       form.getValues('confirmAccountNumber')
     );
-    form.setValue('confirmAccountNumber', confirmVal, { shouldValidate: false });
+    form.setValue('confirmAccountNumber', confirmVal, { shouldValidate: true, shouldDirty: true });
     void form.handleSubmit(onSubmit)(e);
   };
 
@@ -701,6 +701,10 @@ export function SignupForm() {
     formData.set('whatsapp_consent', values.whatsapp_consent ? 'true' : 'false');
     formData.set('alwaysOpen', values.alwaysOpen ? 'true' : 'false');
     formData.set('accountNumber', normalizeAccountNumber(values.accountNumber ?? ''));
+    formData.set(
+      'confirmAccountNumber',
+      normalizeAccountNumber(values.confirmAccountNumber ?? '')
+    );
 
     if (completedCrop && originalFile && imgRef.current) {
         console.log('📸 Processing image crop...');

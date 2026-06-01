@@ -19,12 +19,18 @@ import { QRCodeCanvas as QRCode } from 'qrcode.react';
 import { QRScannerDialog } from './QRScannerDialog';
 import { ItemVerificationDialog } from './ItemVerificationDialog';
 import { RejectionDialog } from './RejectionDialog';
+import { MedicineOrderCard } from './MedicineOrderCard';
+import { isMedicineOrder } from '@/lib/prescription-types';
 
 interface OrderCardProps {
   order: VendorDisplayOrder;
 }
 
 export function OrderCard({ order }: OrderCardProps) {
+  if (isMedicineOrder(order.vendorPortion)) {
+    return <MedicineOrderCard order={order} />;
+  }
+
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isRejectionDialogOpen, setIsRejectionDialogOpen] = useState(false);

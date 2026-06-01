@@ -118,6 +118,52 @@ export class SupabasePlacedOrderService {
   }
 
   /**
+   * Pharmacy: vendor submits item availability, alternatives, and pricing; moves to Preparing with quoted total.
+   */
+  static async submitMedicineVendorReview(
+    orderId: string,
+    vendorId: string,
+    items: OrderItemDetail[],
+    vendorSubtotal: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const supabase = createServiceSupabaseClient();
+      const { data: order, error: fetchError } = await supabase
+        .from('placed_orders')
+        .select('*')
+        .eq('order_id', orderId)
+        .single();
+      if (fetchError) throw fetchError;
+
+      const updatedPortions = (order.vendor_portions as VendorOrderPortion[]).map((portion) => {
+        if (portion.vendorId !== vendorId) return portion;
+        return {
+          ...portion,
+          status: 'Preparing' as const,
+          items,
+          vendorSubtotal,
+        };
+      });
+
+      const { error: updateError } = await supabase
+        .from('placed_orders')
+        .update({
+          vendor_portions: updatedPortions,
+          overall_status: 'In Progress',
+          grand_total: vendorSubtotal,
+          payment_status: 'Pending',
+        })
+        .eq('order_id', orderId);
+
+      if (updateError) throw updateError;
+      return { success: true };
+    } catch (error) {
+      console.error('Error submitting medicine review:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to submit review' };
+    }
+  }
+
+  /**
    * Subscribe to real‑time updates for a vendor's orders.
    */
   static subscribeToVendorOrders(

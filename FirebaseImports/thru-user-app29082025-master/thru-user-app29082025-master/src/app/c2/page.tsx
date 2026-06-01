@@ -19,7 +19,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { vendorTypeOptions, DemoOrder } from "@/lib/demo-data";
+import { vendorTypeOptions, DemoOrder, DemoPrescription } from "@/lib/demo-data";
+import { prescriptionValidationMessage } from "@/lib/prescription-validation";
+import { AlertCircle, Camera, CheckCircle2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DemoState } from "@/lib/demo-sync";
 import { CustomerSignUpForm } from "@/components/demo/CustomerSignUpForm";
@@ -29,6 +31,11 @@ export default function C2CustomerPage() {
   const [vendorType, setVendorType] = useState(vendorTypeOptions[0].value);
   const [state, setState] = useState<DemoState | null>(null);
   const [arrivalSeconds, setArrivalSeconds] = useState(600);
+  const [rxPreview, setRxPreview] = useState<string | null>(null);
+  const [rxAnalyzing, setRxAnalyzing] = useState(false);
+  const [rxValid, setRxValid] = useState<boolean | null>(null);
+  const [rxDate, setRxDate] = useState("");
+  const [rxMedicines, setRxMedicines] = useState<DemoPrescription["medicines"]>([]);
 
   const QR_VALUE = "THRU-DEMO-QR";
 
@@ -60,12 +67,68 @@ export default function C2CustomerPage() {
   }, [state]);
 
   const placeOrder = async () => {
+    if (vendorType === "medical") {
+      if (rxValid !== true) {
+        toast({
+          variant: "destructive",
+          title: "Invalid prescription",
+          description: prescriptionValidationMessage(false),
+        });
+        return;
+      }
+    }
+    const prescription: DemoPrescription | undefined =
+      vendorType === "medical"
+        ? {
+            imageDataUri: rxPreview ?? undefined,
+            prescriptionDate: rxDate,
+            dateValid: rxValid === true,
+            medicines: rxMedicines ?? [],
+          }
+        : undefined;
+
     const res = await fetch("/api/demo-order", {
       method: "POST",
-      body: JSON.stringify({ vendorType }),
+      body: JSON.stringify({ vendorType, prescription }),
     }).then((r) => r.json());
     setState(res);
     toast({ title: "Order placed", description: `Sent to ${vendorType}.` });
+  };
+
+  const handleRxFile = async (file: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUri = String(reader.result);
+      setRxPreview(dataUri);
+      setRxAnalyzing(true);
+      try {
+        const res = await fetch("/api/ai/analyze-prescription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageDataUri: dataUri }),
+        });
+        const data = await res.json();
+        setRxDate(data.prescriptionDate ?? "");
+        setRxValid(data.dateValid ?? false);
+        setRxMedicines(
+          (data.medicines ?? []).map((m: { id: string; name: string; quantity: number; dosage?: string }) => ({
+            id: m.id,
+            name: m.name,
+            quantity: m.quantity,
+            dosage: m.dosage,
+          }))
+        );
+        toast({
+          title: "Prescription scanned",
+          description: data.validationMessage,
+          variant: data.dateValid ? "default" : "destructive",
+        });
+      } finally {
+        setRxAnalyzing(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const confirmDelivered = async () => {
@@ -120,9 +183,72 @@ export default function C2CustomerPage() {
                 This is sent to the vendor immediately.
               </p>
             </div>
-            <Button onClick={placeOrder}>Place demo order</Button>
+            <Button
+              onClick={placeOrder}
+              disabled={vendorType === "medical" && rxValid !== true}
+            >
+              Place demo order
+            </Button>
           </CardContent>
         </Card>
+
+        {vendorType === "medical" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Prescription (medical demo)</CardTitle>
+              <CardDescription>
+                Upload Rx — AI checks date is within 3 months before ordering.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                id="c2-rx-file"
+                onChange={(e) => void handleRxFile(e.target.files?.[0] ?? null)}
+              />
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" asChild disabled={rxAnalyzing}>
+                  <label htmlFor="c2-rx-file" className="cursor-pointer flex items-center">
+                    <Camera className="h-4 w-4 mr-2" /> Upload Rx
+                  </label>
+                </Button>
+                {rxAnalyzing && (
+                  <Badge variant="secondary">
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" /> Analyzing
+                  </Badge>
+                )}
+              </div>
+              {rxPreview && (
+                <img src={rxPreview} alt="Rx" className="max-h-36 rounded border object-contain" />
+              )}
+              {rxValid !== null && (
+                <div
+                  className={`text-sm flex items-start gap-2 p-2 rounded border ${
+                    rxValid ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+                  }`}
+                >
+                  {rxValid ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                  )}
+                  {prescriptionValidationMessage(rxValid)}
+                </div>
+              )}
+              {(rxMedicines?.length ?? 0) > 0 && (
+                <ul className="text-sm space-y-1 border rounded p-2">
+                  {rxMedicines!.map((m) => (
+                    <li key={m.id}>
+                      {m.quantity}× {m.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-2">

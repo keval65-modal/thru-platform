@@ -23,19 +23,6 @@ export interface PlacedOrder {
 }
 
 // Each order document contains an array of these portions, one for each vendor involved.
-export interface VendorOrderPortion {
-  vendorId: string; 
-  vendorName: string;
-  vendorAddress?: string;
-  vendorType?: string;
-  vendorLocation?: { latitude: number; longitude: number }; // For map display
-  status: "New" | "Preparing" | "Ready for Pickup" | "Picked Up" | "Cancelled" | "Pending Vendor Confirmation";  
-  items: OrderItemDetail[];
-  vendorSubtotal: number;
-  prepTime?: number; // Minutes
-}
-
-// This describes a single item within a vendor's portion of the order.
 export interface OrderItemDetail {
   itemId: string;
   name: string;
@@ -45,6 +32,32 @@ export interface OrderItemDetail {
   imageUrl?: string;
   dataAiHint?: string;
   details?: string;
+  alternativeName?: string;
+  available?: boolean;
+  vendorNote?: string;
+}
+
+export interface PrescriptionMetadata {
+  imageDataUri?: string;
+  prescriptionDate?: string;
+  dateValid?: boolean;
+  doctorName?: string;
+  aiRawNotes?: string;
+  medicines?: OrderItemDetail[];
+}
+
+export interface VendorOrderPortion {
+  vendorId: string; 
+  vendorName: string;
+  vendorAddress?: string;
+  vendorType?: string;
+  vendorLocation?: { latitude: number; longitude: number };
+  status: "New" | "Preparing" | "Ready for Pickup" | "Picked Up" | "Cancelled" | "Pending Vendor Confirmation";  
+  items: OrderItemDetail[];
+  vendorSubtotal: number;
+  prepTime?: number;
+  orderType?: string;
+  prescription?: PrescriptionMetadata;
 }
 
 // A custom type for displaying orders in the vendor app.
