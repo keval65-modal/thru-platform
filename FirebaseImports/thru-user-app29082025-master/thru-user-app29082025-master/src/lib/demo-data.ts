@@ -172,15 +172,17 @@ export function createDemoOrder(
 ): DemoOrder {
   const rxMedicines = prescription?.medicines ?? [];
   const catalogItems = getCatalog(vendorType);
-  const baseItems =
+  const baseItems: DemoCatalogItem[] =
     vendorType === 'medical' && rxMedicines.length > 0
-      ? rxMedicines.map((m, i) => ({
-          id: m.id || `rx-${i}`,
-          name: m.name,
-          quantity: String(m.quantity),
-          basePrice: 35 + i * 10,
-          brands: ['Generic', 'Branded'],
-        }))
+      ? rxMedicines.map(
+          (m, i): DemoCatalogItem => ({
+            id: m.id || `rx-${i}`,
+            name: m.name,
+            quantity: String(m.quantity),
+            basePrice: 35 + i * 10,
+            brands: ['Generic', 'Branded'],
+          })
+        )
       : catalogItems;
 
   const items = baseItems.map<DemoOrderLine>((item) => ({
