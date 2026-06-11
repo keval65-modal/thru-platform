@@ -46,6 +46,7 @@ import { VendorRequestPayload, AggregatedItemOffer } from "@/types/vendor-reques
 import { enhancedOrderService } from "@/lib/enhanced-order-service";
 import { routeBasedShopDiscovery, RoutePoint } from "@/lib/route-based-shop-discovery";
 import { useFoodCart } from "@/hooks/useFoodCart";
+import { getShopStatus, getTodayHours } from "@/utils/operating-hours";
 
 function HomePageContent() {
   const router = useRouter();
@@ -95,6 +96,9 @@ function HomePageContent() {
   const [prepTimeFilter, setPrepTimeFilter] = React.useState<string>("all");
   const [foodShops, setFoodShops] = React.useState<any[]>([]);
   const [loadingFoodShops, setLoadingFoodShops] = React.useState(false);
+  const [groceryShops, setGroceryShops] = React.useState<any[]>([]);
+  const [loadingGroceryShops, setLoadingGroceryShops] = React.useState(false);
+  const [showGroceryShops, setShowGroceryShops] = React.useState(false);
 
   // Menu states
   const [selectedShopMenu, setSelectedShopMenu] = React.useState<any>(null);
@@ -735,30 +739,120 @@ function HomePageContent() {
     }
   };
 
-  // Track order completion for purchase pattern analysis
-  const trackOrderCompletion = async () => {
+  const resolveRouteEndpoints = React.useCallback(async () => {
+    if (!selectedStartLocation || !selectedDestination) {
+      toast({
+        title: "Route required",
+        description: "Set your start and destination first.",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    const parseCoords = (str: string): { coordinates: { lat: number; lng: number }; address: string } | null => {
+      let match = str.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+      if (match) {
+        return {
+          coordinates: { lat: parseFloat(match[1]), lng: parseFloat(match[2]) },
+          address: str,
+        };
+      }
+      match = str.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/);
+      if (match) {
+        return {
+          coordinates: { lat: parseFloat(match[1]), lng: parseFloat(match[2]) },
+          address: str,
+        };
+      }
+      return null;
+    };
+
+    let startDetails = parseCoords(selectedStartLocation);
+    let destDetails = parseCoords(selectedDestination);
+
+    if (!startDetails) {
+      const placeDetails = await getPlaceDetails(selectedStartLocation);
+      if (placeDetails) {
+        startDetails = placeDetails as { coordinates: { lat: number; lng: number }; address: string };
+      }
+    }
+    if (!destDetails) {
+      const placeDetails = await getPlaceDetails(selectedDestination);
+      if (placeDetails) {
+        destDetails = placeDetails as { coordinates: { lat: number; lng: number }; address: string };
+      }
+    }
+
+    if (!startDetails || !destDetails) {
+      toast({
+        title: "Location Error",
+        description: "Could not parse locations. Try format: 18.475, 73.860",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    return {
+      start: {
+        latitude: startDetails.coordinates.lat,
+        longitude: startDetails.coordinates.lng,
+        address: startDetails.address || startLocationQuery,
+      },
+      end: {
+        latitude: destDetails.coordinates.lat,
+        longitude: destDetails.coordinates.lng,
+        address: destDetails.address || destinationQuery,
+      },
+    };
+  }, [selectedStartLocation, selectedDestination, startLocationQuery, destinationQuery, getPlaceDetails, toast]);
+
+  const completeGroceryOrder = async () => {
     if (groceryItems.length === 0) return;
-    
-    const userId = "user_123"; // In production, get from auth context
-    const orderId = `order_${Date.now()}`;
-    
-    const items = groceryItems.map(item => ({
-      name: item.name,
-      category: "Grocery", // In production, get from product data
-      quantity: item.quantity,
-      unit: item.unit,
-      packSize: undefined,
-      source: "thru_app"
-    }));
-    
-    const totalAmount = groceryItems.reduce((sum, item) => sum + (item.quantity * 50), 0); // Mock calculation
-    
-    await purchasePatternTracker.trackOrderCompletion(userId, orderId, items, totalAmount);
-    
-    toast({
-      title: "Order Tracked!",
-      description: "Your purchase patterns have been updated for better recommendations.",
-    });
+
+    setShowGroceryShops(true);
+    setLoadingGroceryShops(true);
+
+    try {
+      const endpoints = await resolveRouteEndpoints();
+      if (!endpoints) {
+        setShowGroceryShops(false);
+        return;
+      }
+
+      const result = await routeBasedShopDiscovery.findShopsAlongRoute(
+        endpoints.start,
+        endpoints.end,
+        maxDetourKm,
+        ['grocery', 'supermarket'] as any
+      );
+
+      setGroceryShops(result.shops);
+
+      if (result.shops.length > 0) {
+        toast({
+          title: "Shops on your way",
+          description: `Found ${result.shops.length} grocery shop${result.shops.length > 1 ? 's' : ''} along your route.`,
+        });
+        requestAnimationFrame(() => {
+          document.getElementById('grocery-shops-on-route')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      } else {
+        toast({
+          title: "No shops found",
+          description: "Try increasing the detour distance or adjusting your route.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error finding grocery shops:', error);
+      toast({
+        title: "Error",
+        description: "Could not find shops on your route. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingGroceryShops(false);
+    }
   };
 
   // Load food shops along route
@@ -1513,16 +1607,91 @@ function HomePageContent() {
                         {/* Complete Order Button */}
                         <div className="mt-4 pt-4 border-t">
                           <Button 
-                            onClick={trackOrderCompletion}
+                            onClick={completeGroceryOrder}
+                            disabled={loadingGroceryShops}
                             className="w-full bg-primary hover:bg-primary/90"
                           >
-                            <ShoppingCart className="h-4 w-4 mr-2" />
-                            Complete Order & Track Patterns
+                            {loadingGroceryShops ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <ShoppingCart className="h-4 w-4 mr-2" />
+                            )}
+                            Complete Order
                           </Button>
-                          <p className="text-xs text-muted-foreground mt-2 text-center">
-                            This helps us learn your preferences for better recommendations
-                          </p>
                         </div>
+
+                        {showGroceryShops && (
+                          <div id="grocery-shops-on-route" className="mt-6 space-y-3">
+                            <h4 className="font-medium">Shops on your way</h4>
+                            {loadingGroceryShops ? (
+                              <div className="text-center py-6">
+                                <Loader2 className="h-8 w-8 mx-auto mb-2 text-primary animate-spin" />
+                                <p className="text-sm text-muted-foreground">Finding grocery shops along your route...</p>
+                              </div>
+                            ) : groceryShops.length > 0 ? (
+                              groceryShops.map((shop, index) => {
+                                const status = getShopStatus(shop.businessHours as any);
+                                const todayHours = getTodayHours(shop.businessHours as any);
+                                return (
+                                  <Card key={shop.id || index} className="p-4 hover:shadow-md transition-shadow">
+                                    <div className="flex items-start gap-4 justify-between">
+                                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border bg-muted">
+                                        <Image
+                                          src={
+                                            shop.imageUrl ||
+                                            "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><rect width='100%' height='100%' fill='%23f3f4f6'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%236b7280' font-size='10'>No Image</text></svg>"
+                                          }
+                                          alt={shop.name || 'Shop'}
+                                          width={80}
+                                          height={80}
+                                          className="h-full w-full object-cover"
+                                          unoptimized
+                                        />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                          <h5 className="font-semibold">{shop.name}</h5>
+                                          <Badge variant="outline" className="text-xs">{shop.type}</Badge>
+                                          <Badge variant={status.isOpen ? 'default' : 'secondary'} className="text-xs">
+                                            {status.isOpen ? 'Open' : 'Closed'}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                          <MapPin className="h-3 w-3 shrink-0" />
+                                          {shop.address}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          Hours today: {todayHours}
+                                        </p>
+                                        {shop.detourDistance != null && (
+                                          <p className="text-xs text-muted-foreground mt-1">
+                                            {shop.detourDistance.toFixed(1)} km detour
+                                          </p>
+                                        )}
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        className="shrink-0"
+                                        onClick={() => router.push(`/vendor/${shop.id}`)}
+                                      >
+                                        <Store className="h-4 w-4 mr-2" />
+                                        View Shop
+                                      </Button>
+                                    </div>
+                                  </Card>
+                                );
+                              })
+                            ) : (
+                              <div className="text-center py-6 text-muted-foreground">
+                                <Store className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                                <p className="text-sm">No grocery shops found along your route.</p>
+                                <Button variant="outline" size="sm" className="mt-3" onClick={completeGroceryOrder}>
+                                  Search again
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="text-center py-8">
