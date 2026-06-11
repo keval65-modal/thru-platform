@@ -14,6 +14,7 @@ import { Store, Search, Filter, Download, Eye, Edit, CalendarIcon } from 'lucide
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { getAllVendors } from '../actions';
+import { isPlaceholderShopImage } from '@/lib/shop-image';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
@@ -200,6 +201,7 @@ export default function ShopsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Photo</TableHead>
                 <TableHead>Shop Name</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>Category</TableHead>
@@ -217,6 +219,20 @@ export default function ShopsPage() {
               {filteredShops.length > 0 ? (
                 filteredShops.map((shop) => (
                   <TableRow key={shop.id}>
+                    <TableCell>
+                      {isPlaceholderShopImage(shop.shopImageUrl) ? (
+                        <Badge variant="outline" className="text-xs whitespace-nowrap">
+                          No photo
+                        </Badge>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={shop.shopImageUrl}
+                          alt=""
+                          className="h-[40px] w-[60px] rounded border object-cover"
+                        />
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium">{shop.shopName || 'N/A'}</TableCell>
                     <TableCell>{shop.ownerName || 'N/A'}</TableCell>
                     <TableCell>{shop.storeCategory || 'N/A'}</TableCell>
@@ -245,7 +261,7 @@ export default function ShopsPage() {
                           </Link>
                         </Button>
                         <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/admin/shops/${shop.id}/edit`}>
+                          <Link href={`/admin/${shop.id}/edit`}>
                             <Edit className="h-4 w-4" />
                           </Link>
                         </Button>
@@ -255,7 +271,7 @@ export default function ShopsPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                     No shops found
                   </TableCell>
                 </TableRow>

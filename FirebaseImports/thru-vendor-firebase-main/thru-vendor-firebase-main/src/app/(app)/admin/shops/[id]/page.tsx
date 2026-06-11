@@ -26,6 +26,7 @@ import {
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getVendorForEditing } from '../../actions';
+import { AdminShopImageUpload } from '@/components/admin/AdminShopImageUpload';
 import Link from 'next/link';
 
 export default function ShopDetailPage() {
@@ -106,6 +107,23 @@ export default function ShopDetailPage() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Shop Photo</CardTitle>
+              <CardDescription>
+                Add or replace the photo shown to customers on the map and in listings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AdminShopImageUpload
+                vendorId={shopId}
+                shopName={shop.shopName || 'Shop'}
+                imageUrl={shop.shopImageUrl}
+                onUploaded={(url) => setShop((prev: typeof shop) => ({ ...prev, shopImageUrl: url }))}
+              />
+            </CardContent>
+          </Card>
+
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>

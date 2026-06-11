@@ -1,7 +1,16 @@
+import type { PixelCrop } from 'react-image-crop';
+
 /** Shop display image dimensions (signup + profile). */
 export const SHOP_IMAGE_WIDTH = 150;
 export const SHOP_IMAGE_HEIGHT = 100;
 export const SHOP_IMAGE_ASPECT = SHOP_IMAGE_WIDTH / SHOP_IMAGE_HEIGHT;
+
+/** True when the vendor still has the default placeholder (or no URL). */
+export function isPlaceholderShopImage(url?: string | null): boolean {
+  const u = (url ?? '').trim();
+  if (!u) return true;
+  return u.includes('placehold.co');
+}
 
 /** Reject very large camera originals before loading into memory. */
 export const MAX_SHOP_IMAGE_INPUT_BYTES = 12 * 1024 * 1024; // 12 MB
@@ -66,6 +75,42 @@ export async function prepareShopImageFile(file: File): Promise<PreparedShopImag
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+/** Crop a prepared preview to the standard 150×100 shop image file. */
+export async function cropShopImageFile(
+  image: HTMLImageElement,
+  crop: PixelCrop,
+  fileName: string
+): Promise<File> {
+  const scaleX = image.naturalWidth / image.width;
+  const scaleY = image.naturalHeight / image.height;
+  const canvas = document.createElement('canvas');
+  canvas.width = SHOP_IMAGE_WIDTH;
+  canvas.height = SHOP_IMAGE_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Could not crop this image in your browser.');
+  }
+  ctx.drawImage(
+    image,
+    crop.x * scaleX,
+    crop.y * scaleY,
+    crop.width * scaleX,
+    crop.height * scaleY,
+    0,
+    0,
+    SHOP_IMAGE_WIDTH,
+    SHOP_IMAGE_HEIGHT
+  );
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, 'image/jpeg', 0.9);
+  });
+  if (!blob) {
+    throw new Error('Could not crop this image. Try another photo.');
+  }
+  const safeName = fileName.replace(/\.[^.]+$/, '') || 'shop';
+  return new File([blob], `${safeName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
 }
 
 export function humanizeShopImageError(message: string): string {

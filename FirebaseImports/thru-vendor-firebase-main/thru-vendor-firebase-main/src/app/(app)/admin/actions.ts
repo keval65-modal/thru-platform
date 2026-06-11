@@ -2,7 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import { getSupabaseDbClient } from '@/lib/supabase-auth';
+import { getSupabaseDbClient, getSupabaseServiceDbClient, uploadVendorImage } from '@/lib/supabase-auth';
 import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import type { Vendor } from '@/lib/inventoryModels';
@@ -32,6 +32,12 @@ export type DeleteVendorResult = {
   success: boolean;
   error?: string;
   message?: string;
+};
+
+export type UploadVendorShopImageResult = {
+  success: boolean;
+  imageUrl?: string;
+  error?: string;
 };
 
 // Authentication check
@@ -73,6 +79,9 @@ export async function getAllVendors(): Promise<{
         shopName: row.name, // Map name to shopName
         ownerName: row.owner_name,
         email: row.email,
+        phone: row.phone,
+        city: row.city,
+        shopImageUrl: row.image_url,
         storeCategory: row.store_type,
         isActiveOnThru: row.is_active_on_thru,
         createdAt: row.created_at,
@@ -109,11 +118,18 @@ export async function getVendorForEditing(
          throw error;
     }
 
+    const coords = row.location?.coordinates as [number, number] | undefined;
+
     const vendor = {
         id: row.id,
         shopName: row.name,
         ownerName: row.owner_name,
         email: row.email,
+        phone: row.phone,
+        address: row.address,
+        city: row.city,
+        latitude: coords?.[1],
+        longitude: coords?.[0],
         storeCategory: row.store_type,
         isActiveOnThru: row.is_active_on_thru,
         type: row.store_type, // Assuming type == storeCategory
@@ -185,6 +201,57 @@ export async function updateVendorByAdmin(
   } catch (err) {
     console.error(`[updateVendorByAdmin] Error updating vendor ${vendorId}`, err);
     return {
+      error: err instanceof Error ? err.message : 'Unknown error occurred.',
+    };
+  }
+}
+
+/** Admin upload/replace shop photo for a vendor (uses service-role storage). */
+export async function uploadVendorShopImageByAdmin(
+  vendorId: string,
+  formData: FormData
+): Promise<UploadVendorShopImageResult> {
+  try {
+    await verifyAdmin();
+
+    if (!vendorId) {
+      return { success: false, error: 'Vendor ID is required.' };
+    }
+
+    const shopImage = formData.get('shopImage');
+    if (!(shopImage instanceof File) || shopImage.size === 0) {
+      return { success: false, error: 'Please choose an image to upload.' };
+    }
+    if (!shopImage.type.startsWith('image/')) {
+      return { success: false, error: 'File must be an image (JPG, PNG, or WebP).' };
+    }
+
+    const upload = await uploadVendorImage(vendorId, shopImage);
+    if (!upload.success || !upload.url) {
+      return { success: false, error: upload.error || 'Failed to upload image.' };
+    }
+
+    const supabase = getSupabaseServiceDbClient() ?? getSupabaseDbClient();
+    const { error } = await supabase
+      .from('vendors')
+      .update({
+        image_url: upload.url,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', vendorId);
+
+    if (error) throw error;
+
+    revalidatePath('/admin/shops');
+    revalidatePath(`/admin/shops/${vendorId}`);
+    revalidatePath(`/admin/${vendorId}/edit`);
+    revalidatePath('/admin');
+
+    return { success: true, imageUrl: upload.url };
+  } catch (err) {
+    console.error('[uploadVendorShopImageByAdmin]', err);
+    return {
+      success: false,
       error: err instanceof Error ? err.message : 'Unknown error occurred.',
     };
   }

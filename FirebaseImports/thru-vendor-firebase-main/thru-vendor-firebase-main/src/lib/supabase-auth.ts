@@ -407,9 +407,9 @@ export async function signOutVendor() {
   return { success: true, error: null };
 }
 
-// Check if vendor profile exists
+// Check if vendor profile exists (service-role on server so login is not blocked by RLS)
 export async function getVendorProfile(userId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = getSupabaseDbClient();
   
   const { data, error } = await supabase
     .from('vendors')

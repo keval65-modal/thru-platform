@@ -4,7 +4,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { getSupabaseDbClient } from '@/lib/supabase-auth';
+import { getSupabaseDbClient, getSupabaseServiceDbClient } from '@/lib/supabase-auth';
 import type { SessionData } from '@/types/session';
 
 const AUTH_COOKIE_NAME = 'thru_vendor_auth_token';
@@ -99,7 +99,8 @@ export async function validateUserForSession(uid: string): Promise<{ success: bo
   }
 
   try {
-    const supabase = getSupabaseDbClient();
+    // Prefer service role so post-login validation is not blocked by vendors RLS.
+    const supabase = getSupabaseServiceDbClient() ?? getSupabaseDbClient();
     const { data, error } = await supabase
       .from('vendors')
       .select('id')

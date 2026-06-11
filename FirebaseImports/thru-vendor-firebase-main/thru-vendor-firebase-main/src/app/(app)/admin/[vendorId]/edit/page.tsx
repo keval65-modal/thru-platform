@@ -2,6 +2,7 @@
 import { notFound } from 'next/navigation';
 import { getVendorForEditing } from '../../actions';
 import { EditVendorForm } from './EditVendorForm';
+import { AdminShopImageUpload } from '@/components/admin/AdminShopImageUpload';
 import {
   Card,
   CardContent,
@@ -75,7 +76,15 @@ export default async function EditVendorPage(
             .
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-8">
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Shop photo</h3>
+            <AdminShopImageUpload
+              vendorId={vendorId}
+              shopName={vendor.shopName}
+              imageUrl={vendor.shopImageUrl}
+            />
+          </div>
           <EditVendorForm vendor={vendor} />
         </CardContent>
       </Card>

@@ -45,3 +45,4 @@ serviceAccountKey.json
 
 .vercel
 .env*.local
+.env*
