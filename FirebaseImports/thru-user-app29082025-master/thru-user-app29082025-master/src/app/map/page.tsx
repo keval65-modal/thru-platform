@@ -11,6 +11,7 @@ import BottomNav from '@/components/layout/bottom-nav';
 import { useToast } from '@/hooks/use-toast';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import { distanceKm } from '@/lib/geo-utils';
 
 // Category filter configuration
 const CATEGORY_FILTERS = [
@@ -50,22 +51,6 @@ const CATEGORY_FILTERS = [
     activeColor: 'bg-green-600 text-white'
   }
 ];
-
-function toRadians(deg: number) {
-  return (deg * Math.PI) / 180;
-}
-
-function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
-  const R = 6371;
-  const dLat = toRadians(b.latitude - a.latitude);
-  const dLon = toRadians(b.longitude - a.longitude);
-  const lat1 = toRadians(a.latitude);
-  const lat2 = toRadians(b.latitude);
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLon = Math.sin(dLon / 2);
-  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
 
 export default function MapPage() {
   const { toast } = useToast();

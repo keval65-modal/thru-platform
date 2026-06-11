@@ -47,7 +47,8 @@ import { VendorRequestPayload, AggregatedItemOffer } from "@/types/vendor-reques
 import { enhancedOrderService } from "@/lib/enhanced-order-service";
 import { routeBasedShopDiscovery, RoutePoint } from "@/lib/route-based-shop-discovery";
 import { useFoodCart } from "@/hooks/useFoodCart";
-import { getShopStatus, getTodayHours } from "@/utils/operating-hours";
+import { getShopStatus, getHoursDisplayLine, getTodayHours } from "@/utils/operating-hours";
+import { distanceKm, formatDistanceKm } from "@/lib/geo-utils";
 import { MedicineOrderPanel } from "@/components/medicine/MedicineOrderPanel";
 
 function HomePageContent() {
@@ -1654,7 +1655,22 @@ function HomePageContent() {
                             ) : groceryShops.length > 0 ? (
                               groceryShops.map((shop, index) => {
                                 const status = getShopStatus(shop.businessHours as any);
-                                const todayHours = getTodayHours(shop.businessHours as any);
+                                const hoursLine = getHoursDisplayLine(shop.businessHours as any);
+                                const routeOrigin = routeCoords?.start
+                                  ? {
+                                      latitude: routeCoords.start.lat,
+                                      longitude: routeCoords.start.lng,
+                                    }
+                                  : null;
+                                const distanceLabel =
+                                  routeOrigin && shop.coordinates
+                                    ? formatDistanceKm(
+                                        distanceKm(routeOrigin, {
+                                          latitude: shop.coordinates.lat,
+                                          longitude: shop.coordinates.lng,
+                                        })
+                                      )
+                                    : null;
                                 return (
                                   <Card key={shop.id || index} className="p-4 hover:shadow-md transition-shadow">
                                     <div className="flex items-start gap-4 justify-between">
@@ -1683,12 +1699,13 @@ function HomePageContent() {
                                           <MapPin className="h-3 w-3 shrink-0" />
                                           {shop.address}
                                         </p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          Hours today: {todayHours}
-                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-1">{hoursLine}</p>
+                                        {distanceLabel && (
+                                          <p className="text-xs text-muted-foreground mt-1">{distanceLabel}</p>
+                                        )}
                                         {shop.detourDistance != null && (
                                           <p className="text-xs text-muted-foreground mt-1">
-                                            {shop.detourDistance.toFixed(1)} km detour
+                                            {shop.detourDistance.toFixed(1)} km from route
                                           </p>
                                         )}
                                       </div>

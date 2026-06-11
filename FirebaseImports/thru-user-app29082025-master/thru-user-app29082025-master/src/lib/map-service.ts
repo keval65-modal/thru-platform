@@ -4,7 +4,10 @@
 
 import { getSupabaseClient } from './supabase/client';
 import { ShopMarkerData, ShopCategory, OperatingHours } from '@/types/map-types';
-import { isShopOpen } from '@/utils/operating-hours';
+import {
+  isShopOpen,
+  operatingHoursFromVendorFields,
+} from '@/utils/operating-hours';
 
 /**
  * Map category string to ShopCategory enum
@@ -21,10 +24,33 @@ function mapCategoryToEnum(category: string): ShopCategory {
   if (categoryLower.includes('medical') || categoryLower.includes('pharmacy') || categoryLower.includes('health')) {
     return ShopCategory.MEDICAL;
   }
-  if (categoryLower.includes('grocery') || categoryLower.includes('supermarket') || categoryLower.includes('store')) {
+  if (
+    categoryLower.includes('grocery') ||
+    categoryLower.includes('supermarket') ||
+    categoryLower.includes('kirana') ||
+    categoryLower.includes('mart') ||
+    categoryLower.includes('shop')
+  ) {
     return ShopCategory.GROCERY;
   }
   
+  return ShopCategory.OTHER;
+}
+
+function resolveShopCategory(
+  storeType: string | null | undefined,
+  categories: string[],
+  name: string
+): ShopCategory {
+  if (storeType) {
+    const fromStore = mapCategoryToEnum(storeType);
+    if (fromStore !== ShopCategory.OTHER) return fromStore;
+  }
+  const fromCategories = getPrimaryCategory(categories);
+  if (fromCategories !== ShopCategory.OTHER) return fromCategories;
+  if (/\b(super\s*shop|shoppee|kirana|grocery|mart|provision)\b/i.test(name)) {
+    return ShopCategory.GROCERY;
+  }
   return ShopCategory.OTHER;
 }
 
@@ -51,7 +77,9 @@ export async function getAllShopsForMap(
 
     let query = supabase
       .from('vendors')
-      .select('id, name, address, location, categories, operating_hours, phone, email')
+      .select(
+        'id, name, address, location, categories, store_type, operating_hours, opening_time, closing_time, weekly_close_on, phone, email, image_url'
+      )
       .eq('is_active', true)
       .eq('is_active_on_thru', true);
 
@@ -78,8 +106,18 @@ export async function getAllShopsForMap(
         };
       }
 
-      const primaryCategory = getPrimaryCategory(vendor.categories || []);
-      const operatingHours = vendor.operating_hours as OperatingHours | null;
+      const primaryCategory = resolveShopCategory(
+        vendor.store_type,
+        vendor.categories || [],
+        vendor.name || ''
+      );
+      const operatingHours =
+        (vendor.operating_hours as OperatingHours | null) ||
+        operatingHoursFromVendorFields(
+          vendor.opening_time,
+          vendor.closing_time,
+          vendor.weekly_close_on
+        );
 
       return {
         id: vendor.id,
@@ -148,7 +186,9 @@ export async function getShopById(shopId: string): Promise<ShopMarkerData | null
 
     const { data, error } = await supabase
       .from('vendors')
-      .select('id, name, address, location, categories, operating_hours, phone, email')
+      .select(
+        'id, name, address, location, categories, store_type, operating_hours, opening_time, closing_time, weekly_close_on, phone, email, image_url'
+      )
       .eq('id', shopId)
       .single();
 
@@ -166,8 +206,18 @@ export async function getShopById(shopId: string): Promise<ShopMarkerData | null
       };
     }
 
-    const primaryCategory = getPrimaryCategory(data.categories || []);
-    const operatingHours = data.operating_hours as OperatingHours | null;
+    const primaryCategory = resolveShopCategory(
+      data.store_type,
+      data.categories || [],
+      data.name || ''
+    );
+    const operatingHours =
+      (data.operating_hours as OperatingHours | null) ||
+      operatingHoursFromVendorFields(
+        data.opening_time,
+        data.closing_time,
+        data.weekly_close_on
+      );
 
     return {
       id: data.id,

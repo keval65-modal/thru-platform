@@ -3,7 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { ShopMarkerData, ShopCategory } from '@/types/map-types';
-import { getTodayHours } from '@/utils/operating-hours';
+import { getHoursDisplayLine, getShopStatus } from '@/utils/operating-hours';
+import { distanceKm, formatDistanceKm } from '@/lib/geo-utils';
 
 interface ShopMapProps {
   shops: ShopMarkerData[];
@@ -114,9 +115,19 @@ const CATEGORY_INFO = {
 };
 
 // Generate HTML content for info window
-function createInfoWindowContent(shop: ShopMarkerData): string {
+function createInfoWindowContent(
+  shop: ShopMarkerData,
+  userLocation?: { latitude: number; longitude: number }
+): string {
   const categoryInfo = CATEGORY_INFO[shop.category];
-  const todayHours = getTodayHours(shop.operatingHours);
+  const status = getShopStatus(shop.operatingHours);
+  const hoursLine = getHoursDisplayLine(shop.operatingHours);
+  const distanceLine =
+    userLocation &&
+    shop.location.latitude &&
+    shop.location.longitude
+      ? formatDistanceKm(distanceKm(userLocation, shop.location))
+      : null;
   
   // Determine redirect URL - go to dedicated vendor ordering page
   const redirectUrl = `/vendor/${shop.id}`;
@@ -133,10 +144,19 @@ function createInfoWindowContent(shop: ShopMarkerData): string {
         </div>
         
         <!-- Status badge -->
-        <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; ${shop.isOpen ? 'background-color: #16a34a; color: white;' : 'background-color: #9ca3af; color: white;'}">
-          ${shop.isOpen ? 'Open Now' : 'Closed'}
+        <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; ${status.isOpen ? 'background-color: #16a34a; color: white;' : 'background-color: #9ca3af; color: white;'}">
+          ${status.isOpen ? 'Open Now' : 'Closed'}
         </span>
       </div>
+
+      ${distanceLine ? `
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: #111827; font-weight: 500;">
+          <svg style="width: 16px; height: 16px; flex-shrink: 0;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+          </svg>
+          <span>${distanceLine}</span>
+        </div>
+      ` : ''}
 
       <!-- Product Images (if available) -->
       ${shop.images && shop.images.length > 0 ? `
@@ -173,7 +193,7 @@ function createInfoWindowContent(shop: ShopMarkerData): string {
         <svg style="width: 16px; height: 16px; flex-shrink: 0;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
         </svg>
-        <span>${todayHours}</span>
+        <span>${hoursLine}</span>
       </div>
 
       <!-- Action button -->
@@ -278,7 +298,7 @@ export function ShopMap({ shops, userLocation, onShopSelect, className = '' }: S
 
           // Set info window content as HTML string
           if (infoWindowRef.current) {
-            infoWindowRef.current.setContent(createInfoWindowContent(shop));
+            infoWindowRef.current.setContent(createInfoWindowContent(shop, userLocation));
             infoWindowRef.current.open(map, marker);
           }
         });

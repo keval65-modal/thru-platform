@@ -20,6 +20,9 @@ export interface Vendor {
   isActiveOnThru: boolean
   groceryEnabled: boolean
   operatingHours?: any
+  openingTime?: string
+  closingTime?: string
+  weeklyCloseOn?: string
   fcmToken?: string
   createdAt: Date
   updatedAt: Date
@@ -339,6 +342,9 @@ export class SupabaseVendorService {
       isActiveOnThru: data.is_active_on_thru ?? false,
       groceryEnabled: data.grocery_enabled ?? false,
       operatingHours: data.operating_hours,
+      openingTime: data.opening_time,
+      closingTime: data.closing_time,
+      weeklyCloseOn: data.weekly_close_on,
       fcmToken: data.fcm_token,
       createdAt: new Date(data.created_at),
       updatedAt: new Date(data.updated_at),

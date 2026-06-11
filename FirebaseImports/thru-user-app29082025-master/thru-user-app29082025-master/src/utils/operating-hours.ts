@@ -135,11 +135,103 @@ export function formatOperatingHours(dayHours?: DayHours): string {
  */
 export function getTodayHours(operatingHours?: OperatingHours | null): string {
   if (!operatingHours) {
-    return 'Open 24/7';
+    return 'Hours not listed';
   }
 
   const currentDay = getCurrentDay();
   const todayHours = operatingHours[currentDay];
   
   return formatOperatingHours(todayHours);
+}
+
+const DAY_NAME_TO_KEY: Record<string, keyof OperatingHours> = {
+  monday: 'monday',
+  tuesday: 'tuesday',
+  wednesday: 'wednesday',
+  thursday: 'thursday',
+  friday: 'friday',
+  saturday: 'saturday',
+  sunday: 'sunday',
+};
+
+/** Parse vendor signup time labels like "09:00 AM" or "12:00 PM (Noon)" to 24h HH:MM. */
+export function parseVendorTimeLabel(label?: string | null): string | null {
+  if (!label?.trim()) return null;
+  const match = label.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!match) return null;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = match[2];
+  const period = match[3].toUpperCase();
+
+  if (period === 'AM') {
+    if (hours === 12) hours = 0;
+  } else if (hours !== 12) {
+    hours += 12;
+  }
+
+  return `${hours.toString().padStart(2, '0')}:${minutes}`;
+}
+
+/**
+ * Build structured operating hours from vendor profile fields (opening_time, closing_time, weekly_close_on).
+ */
+export function operatingHoursFromVendorFields(
+  openingTime?: string | null,
+  closingTime?: string | null,
+  weeklyCloseOn?: string | null
+): OperatingHours | null {
+  const open = parseVendorTimeLabel(openingTime);
+  const close = parseVendorTimeLabel(closingTime);
+  if (!open || !close) return null;
+
+  const days: (keyof OperatingHours)[] = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+
+  // Same open/close (e.g. 12:00 AM → 12:00 AM) is treated as open all day.
+  if (open === close) {
+    const allDay: OperatingHours = {};
+    for (const day of days) {
+      allDay[day] = { open: '00:00', close: '23:59', closed: false };
+    }
+    return allDay;
+  }
+
+  const weeklyCloseKey =
+    weeklyCloseOn && weeklyCloseOn !== 'Never Closed'
+      ? DAY_NAME_TO_KEY[weeklyCloseOn.trim().toLowerCase()]
+      : undefined;
+
+  const hours: OperatingHours = {};
+  for (const day of days) {
+    if (weeklyCloseKey && day === weeklyCloseKey) {
+      hours[day] = { open: '00:00', close: '00:00', closed: true };
+    } else {
+      hours[day] = { open, close, closed: false };
+    }
+  }
+  return hours;
+}
+
+/** Human-readable hours line for map popups (includes closed / opens-later hints). */
+export function getHoursDisplayLine(operatingHours?: OperatingHours | null): string {
+  if (!operatingHours) return 'Hours not listed';
+
+  const status = getShopStatus(operatingHours);
+  const today = getTodayHours(operatingHours);
+
+  if (status.isOpen) {
+    return `Open now · ${today}`;
+  }
+  if (status.nextOpenTime) {
+    return `Closed · Opens ${status.nextOpenTime}`;
+  }
+  return `Closed · ${today}`;
 }

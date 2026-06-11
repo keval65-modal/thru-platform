@@ -11,6 +11,8 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 import { SupabaseVendorService } from './supabase/vendor-service'
+import { shopMatchesStoreTypes } from './vendor-store-types'
+import { operatingHoursFromVendorFields } from '@/utils/operating-hours'
 import { StoreType, StoreCapabilities } from '@/types/grocery-advanced'
 
 export interface RoutePoint {
@@ -156,7 +158,13 @@ export class RouteBasedShopDiscovery {
             rating: 4.5, // Default rating
             phone: vendor.phone,
             email: vendor.email,
-            businessHours: vendor.operatingHours
+            businessHours:
+              vendor.operatingHours ||
+              operatingHoursFromVendorFields(
+                vendor.openingTime,
+                vendor.closingTime,
+                vendor.weeklyCloseOn
+              )
           })
         }
       })
@@ -170,10 +178,24 @@ export class RouteBasedShopDiscovery {
     }
   }
 
-  // Filter shops by store types
+  // Filter shops by store types (handles "Grocery Store", "Other" super shops, etc.)
   private filterShopsByType(shops: ShopLocation[], storeTypes: StoreType[]): ShopLocation[] {
-    const normalizedRequested = new Set(storeTypes.map((s) => String(s).trim().toLowerCase()))
-    return shops.filter((shop) => normalizedRequested.has(String(shop.type).trim().toLowerCase()))
+    return shops.filter((shop) => shopMatchesStoreTypes(shop, storeTypes))
+  }
+
+  /** Prefer step paths — overview_path is too sparse for accurate corridor matching. */
+  private extractDenseRoutePath(route: google.maps.DirectionsRoute): google.maps.LatLng[] {
+    const dense: google.maps.LatLng[] = []
+    for (const leg of route.legs) {
+      for (const step of leg.steps) {
+        const stepPath = step.path || []
+        for (const point of stepPath) {
+          dense.push(point)
+        }
+      }
+    }
+    if (dense.length > 0) return dense
+    return route.overview_path || []
   }
 
   // Determine store type from categories
@@ -390,31 +412,29 @@ export class RouteBasedShopDiscovery {
       }
     }
 
-    // Extract route polyline and basic info
-    const routePolyline = routeResult.routes[0].overview_polyline
-    const totalDistance = routeResult.routes[0].legs[0].distance?.value || 0 // meters
-    const totalDuration = routeResult.routes[0].legs[0].duration?.value || 0 // seconds
+    const route = routeResult.routes[0]
+    const routePolyline = route.overview_polyline || ''
+    const totalDistance = route.legs[0]?.distance?.value || 0 // meters
+    const totalDuration = route.legs[0]?.duration?.value || 0 // seconds
+    const routePath = this.extractDenseRoutePath(route)
 
-    // If route polyline is empty (Google Maps API failed), return empty result
-    if (!routePolyline || routePolyline === '') {
-      console.warn('⚠️ Route polyline is empty - returning empty result')
-      return {
-        shops: [],
-        routePolyline: '',
-        totalDistance: 0,
-        totalDuration: 0,
-        detourArea: {
-          center: { lat: startPoint.latitude, lng: startPoint.longitude },
-          radius: maxDetourKm
-        }
-      }
+    if (routePath.length === 0) {
+      console.warn('⚠️ No route path points — using straight-line fallback')
+      return this.calculateRouteWithShopsFallbackLine(
+        startPoint,
+        endPoint,
+        shops,
+        maxDetourKm
+      )
     }
 
     // Find shops along the route
     const shopsAlongRoute = await this.findShopsAlongRoutePolyline(
-      routeResult,
+      routePath,
       shops,
-      maxDetourKm
+      maxDetourKm,
+      startPoint,
+      endPoint
     )
 
     // Calculate detour area
@@ -429,28 +449,98 @@ export class RouteBasedShopDiscovery {
     }
   }
 
-  // Find shops along the route polyline
-  private async findShopsAlongRoutePolyline(
-    routeResult: google.maps.DirectionsResult,
+  private calculateRouteWithShopsFallbackLine(
+    startPoint: RoutePoint,
+    endPoint: RoutePoint,
     shops: ShopLocation[],
     maxDetourKm: number
-  ): Promise<RouteBasedShop[]> {
-    const route = routeResult.routes[0]
-    const routePath = route.overview_path || []
-    
-    if (routePath.length === 0) {
-      console.warn('⚠️ No route path found')
-      return []
-    }
+  ): RouteCalculationResult {
+    const nearbyShops: RouteBasedShop[] = shops
+      .map((shop) => {
+        const distanceFromLine = this.calculatePerpendicularDistance(
+          shop.coordinates.lat,
+          shop.coordinates.lng,
+          startPoint.latitude,
+          startPoint.longitude,
+          endPoint.latitude,
+          endPoint.longitude
+        )
+        const routePosition = this.calculateRoutePosition(
+          shop.coordinates.lat,
+          shop.coordinates.lng,
+          startPoint.latitude,
+          startPoint.longitude,
+          endPoint.latitude,
+          endPoint.longitude
+        )
+        const distanceFromStart = this.calculateDistance(
+          startPoint.latitude,
+          startPoint.longitude,
+          shop.coordinates.lat,
+          shop.coordinates.lng
+        )
+        return {
+          id: shop.id,
+          name: shop.name,
+          type: shop.type,
+          imageUrl: shop.imageUrl,
+          coordinates: shop.coordinates,
+          address: shop.address,
+          categories: shop.categories,
+          businessHours: shop.businessHours,
+          distanceFromRoute: distanceFromLine,
+          detourDistance: distanceFromLine,
+          routePosition,
+          estimatedTime: Math.round((distanceFromStart / 1000) * 3),
+          isOnRoute: distanceFromLine <= 1,
+        }
+      })
+      .filter(
+        (shop) =>
+          shop.distanceFromRoute <= maxDetourKm &&
+          shop.routePosition >= -0.15 &&
+          shop.routePosition <= 1.15
+      )
+      .sort((a, b) => a.routePosition - b.routePosition)
 
+    return {
+      shops: nearbyShops,
+      routePolyline: '',
+      totalDistance: this.calculateDistance(
+        startPoint.latitude,
+        startPoint.longitude,
+        endPoint.latitude,
+        endPoint.longitude
+      ) / 1000,
+      totalDuration: 0,
+      detourArea: {
+        center: {
+          lat: (startPoint.latitude + endPoint.latitude) / 2,
+          lng: (startPoint.longitude + endPoint.longitude) / 2,
+        },
+        radius: maxDetourKm,
+      },
+    }
+  }
+
+  // Find shops along the route polyline
+  private async findShopsAlongRoutePolyline(
+    routePath: google.maps.LatLng[],
+    shops: ShopLocation[],
+    maxDetourKm: number,
+    startPoint: RoutePoint,
+    endPoint: RoutePoint
+  ): Promise<RouteBasedShop[]> {
     const shopsAlongRoute: RouteBasedShop[] = []
 
     for (const shop of shops) {
       try {
-        const shopAnalysis = await this.analyzeShopAlongRoute(
+        const shopAnalysis = this.analyzeShopAlongRoute(
           shop,
           routePath,
-          maxDetourKm
+          maxDetourKm,
+          startPoint,
+          endPoint
         )
 
         if (shopAnalysis) {
@@ -461,18 +551,18 @@ export class RouteBasedShopDiscovery {
       }
     }
 
-    // Sort by distance from route
     return shopsAlongRoute.sort((a, b) => a.distanceFromRoute - b.distanceFromRoute)
   }
 
   // Analyze if a shop is along the route
-  private async analyzeShopAlongRoute(
+  private analyzeShopAlongRoute(
     shop: ShopLocation,
     routePath: google.maps.LatLng[],
-    maxDetourKm: number
-  ): Promise<RouteBasedShop | null> {
-    // Find the closest point on the route to the shop
-    let minDistance = Infinity
+    maxDetourKm: number,
+    startPoint: RoutePoint,
+    endPoint: RoutePoint
+  ): RouteBasedShop | null {
+    let minDistanceM = Infinity
     let closestPointIndex = -1
 
     for (let i = 0; i < routePath.length; i++) {
@@ -484,28 +574,51 @@ export class RouteBasedShopDiscovery {
         routePoint.lng()
       )
 
-      if (distance < minDistance) {
-        minDistance = distance
+      if (distance < minDistanceM) {
+        minDistanceM = distance
         closestPointIndex = i
       }
     }
 
-    // Convert distance to km
-    const distanceFromRoute = minDistance / 1000
+    // Also check perpendicular distance to the driving corridor (start→end chord)
+    const perpendicularKm = this.calculatePerpendicularDistance(
+      shop.coordinates.lat,
+      shop.coordinates.lng,
+      startPoint.latitude,
+      startPoint.longitude,
+      endPoint.latitude,
+      endPoint.longitude
+    )
 
-    // Check if shop is within detour tolerance
+    const distanceFromRoute = Math.min(minDistanceM / 1000, perpendicularKm)
+
     if (distanceFromRoute > maxDetourKm) {
       return null
     }
 
-    // Calculate detour distance (additional distance to visit this shop)
-    const detourDistance = distanceFromRoute * 2 // Rough estimate: go to shop and back to route
+    const routePosition =
+      routePath.length > 1 ? closestPointIndex / (routePath.length - 1) : 0.5
+    const positionAlongChord = this.calculateRoutePosition(
+      shop.coordinates.lat,
+      shop.coordinates.lng,
+      startPoint.latitude,
+      startPoint.longitude,
+      endPoint.latitude,
+      endPoint.longitude
+    )
 
-    // Calculate route position (0-1)
-    const routePosition = closestPointIndex / (routePath.length - 1)
+    if (positionAlongChord < -0.15 || positionAlongChord > 1.15) {
+      return null
+    }
 
-    // Estimate time to reach shop (rough calculation)
-    const estimatedTime = Math.round(distanceFromRoute * 2) // 2 minutes per km
+    const detourDistance = distanceFromRoute * 2
+    const distanceFromStartM = this.calculateDistance(
+      startPoint.latitude,
+      startPoint.longitude,
+      shop.coordinates.lat,
+      shop.coordinates.lng
+    )
+    const estimatedTime = Math.round((distanceFromStartM / 1000) * 3)
 
     return {
       id: shop.id,
