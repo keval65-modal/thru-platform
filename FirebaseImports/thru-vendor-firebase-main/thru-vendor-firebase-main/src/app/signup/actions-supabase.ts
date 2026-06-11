@@ -453,7 +453,14 @@ export async function handleSignupSupabase(
         shopImageUrl = uploadResult.url;
         console.log(`✅ Image uploaded: ${shopImageUrl}`);
       } else {
-        console.warn(`⚠️ Image upload failed: ${uploadResult.error}, using placeholder`);
+        console.error(`❌ Image upload failed: ${uploadResult.error}`);
+        return {
+          success: false,
+          error:
+            uploadResult.error?.includes('vendor-images-schema.sql')
+              ? `Shop image storage is not configured: ${uploadResult.error}`
+              : `Could not save shop image: ${uploadResult.error ?? 'Unknown error'}. You can try again without a photo, or use a smaller image.`,
+        };
       }
     } else {
       console.log('\n⏭️  Step 2: No image provided, using placeholder');

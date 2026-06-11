@@ -462,7 +462,10 @@ export async function uploadVendorImage(
   vendorId: string,
   imageFile: File
 ): Promise<{ success: boolean; url?: string; error?: string }> {
-  const supabase = getSupabaseDbClient();
+  const supabase = getSupabaseServiceDbClient() ?? getSupabaseDbClient();
+  if (!getSupabaseServiceDbClient()) {
+    console.warn('[uploadVendorImage] SUPABASE_SERVICE_ROLE_KEY missing — upload may fail RLS checks');
+  }
   
   try {
     const fileExt = imageFile.name.split('.').pop() || 'jpg';
@@ -487,12 +490,16 @@ export async function uploadVendorImage(
       });
     
     if (error) {
-      const hint =
-        error.message?.toLowerCase().includes('bucket') ||
-        error.message?.toLowerCase().includes('not found')
-          ? ` Run src/lib/supabase/vendor-images-schema.sql in the Supabase SQL editor (bucket "${VENDOR_IMAGES_BUCKET}").`
-          : '';
-      console.error('❌ Error uploading image:', error.message);
+      const lower = error.message?.toLowerCase() ?? '';
+      let hint = '';
+      if (lower.includes('bucket') || lower.includes('not found')) {
+        hint = ` Run src/lib/supabase/vendor-images-schema.sql in the Supabase SQL editor (bucket "${VENDOR_IMAGES_BUCKET}").`;
+      } else if (lower.includes('quota') || lower.includes('limit') || lower.includes('storage is full')) {
+        hint = ' Supabase project storage may be full — check Storage usage in the Supabase dashboard.';
+      } else if (lower.includes('row-level security') || lower.includes('policy')) {
+        hint = ' Ensure SUPABASE_SERVICE_ROLE_KEY is set on the server.';
+      }
+      console.error('❌ Error uploading image:', error.message, { vendorId, filePath });
       return { success: false, error: error.message + hint };
     }
     

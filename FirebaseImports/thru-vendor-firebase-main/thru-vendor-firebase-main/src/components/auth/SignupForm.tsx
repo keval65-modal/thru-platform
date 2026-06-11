@@ -51,15 +51,21 @@ import ReactCrop, {
 } from 'react-image-crop';
 import type { ReactNode } from 'react';
 import 'react-image-crop/dist/ReactCrop.css';
-import Image from 'next/image';
+import {
+  humanizeShopImageError,
+  prepareShopImageFile,
+  SHOP_IMAGE_ASPECT,
+  SHOP_IMAGE_HEIGHT,
+  SHOP_IMAGE_WIDTH,
+} from '@/lib/shop-image';
 
 const storeCategories = ["Grocery Store", "Restaurant", "Bakery", "Boutique", "Electronics", "Cafe", "Pharmacy", "Liquor Shop", "Pet Shop", "Gift Shop", "Other"];
 const genders = ["Male", "Female", "Other", "Prefer not to say"];
 const weeklyCloseDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Never Closed"];
 const countryCodes = ["+91", "+1", "+44", "+61", "+81"];
-const TARGET_IMAGE_WIDTH = 150;
-const TARGET_IMAGE_HEIGHT = 100;
-const TARGET_ASPECT_RATIO = TARGET_IMAGE_WIDTH / TARGET_IMAGE_HEIGHT;
+const TARGET_IMAGE_WIDTH = SHOP_IMAGE_WIDTH;
+const TARGET_IMAGE_HEIGHT = SHOP_IMAGE_HEIGHT;
+const TARGET_ASPECT_RATIO = SHOP_IMAGE_ASPECT;
 
 const generateTimeOptions = () => {
   const options = [];
@@ -233,28 +239,36 @@ const signupFormSchema = z.object({
 });
 
 async function getCroppedImgBlob(image: HTMLImageElement, crop: PixelCrop, fileName: string): Promise<File | null> {
-  const canvas = document.createElement('canvas');
   const scaleX = image.naturalWidth / image.width;
   const scaleY = image.naturalHeight / image.height;
-  canvas.width = crop.width * scaleX;
-  canvas.height = crop.height * scaleY;
+  const canvas = document.createElement('canvas');
+  canvas.width = TARGET_IMAGE_WIDTH;
+  canvas.height = TARGET_IMAGE_HEIGHT;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.drawImage(image, crop.x * scaleX, crop.y * scaleY, crop.width * scaleX, crop.height * scaleY, 0, 0, crop.width * scaleX, crop.height * scaleY);
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = TARGET_IMAGE_WIDTH;
-  finalCanvas.height = TARGET_IMAGE_HEIGHT;
-  const finalCtx = finalCanvas.getContext('2d');
-  if (!finalCtx) return null;
-  finalCtx.drawImage(canvas, 0, 0, TARGET_IMAGE_WIDTH, TARGET_IMAGE_HEIGHT);
+  ctx.drawImage(
+    image,
+    crop.x * scaleX,
+    crop.y * scaleY,
+    crop.width * scaleX,
+    crop.height * scaleY,
+    0,
+    0,
+    TARGET_IMAGE_WIDTH,
+    TARGET_IMAGE_HEIGHT
+  );
   return new Promise((resolve, reject) => {
-    finalCanvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('Canvas is empty'));
-        return;
-      }
-      resolve(new File([blob], fileName, { type: 'image/jpeg', lastModified: Date.now() }));
-    }, 'image/jpeg', 0.95);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('Could not crop this image. Try another photo.'));
+          return;
+        }
+        resolve(new File([blob], fileName.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg', lastModified: Date.now() }));
+      },
+      'image/jpeg',
+      0.9
+    );
   });
 }
 
@@ -267,6 +281,8 @@ export function SignupForm() {
 
   const [showPassword, setShowPassword] = React.useState(false);
   const [imgSrc, setImgSrc] = React.useState('');
+  const [isPreparingImage, setIsPreparingImage] = React.useState(false);
+  const previewObjectUrlRef = React.useRef<string | null>(null);
   const imgRef = React.useRef<HTMLImageElement>(null);
   const [crop, setCrop] = React.useState<any>();
   const [completedCrop, setCompletedCrop] = React.useState<any>();
@@ -471,19 +487,40 @@ export function SignupForm() {
     form.setValue('firebaseIdToken', firebaseIdToken);
   }, [firebaseIdToken, form]);
 
-  const handleImageFileChange = (event: any) => {
+  React.useEffect(() => {
+    return () => {
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  const handleImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      setCrop(undefined);
-      setCompletedCrop(undefined);
-      const reader = new FileReader();
-      reader.addEventListener('load', () => setImgSrc(reader.result?.toString() || ''));
-      reader.readAsDataURL(file);
-      setOriginalFile(file);
-    }
-    // Reset input so the same file can be selected again if needed
     if (event.target) {
       event.target.value = '';
+    }
+    if (!file) return;
+
+    setIsPreparingImage(true);
+    setCrop(undefined);
+    setCompletedCrop(undefined);
+
+    try {
+      const prepared = await prepareShopImageFile(file);
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      }
+      previewObjectUrlRef.current = prepared.previewUrl;
+      setImgSrc(prepared.previewUrl);
+      setOriginalFile(prepared.file);
+    } catch (err: unknown) {
+      const msg = humanizeShopImageError(err instanceof Error ? err.message : String(err));
+      toast({ variant: 'destructive', title: 'Shop image', description: msg });
+      setImgSrc('');
+      setOriginalFile(null);
+    } finally {
+      setIsPreparingImage(false);
     }
   };
 
@@ -708,9 +745,15 @@ export function SignupForm() {
 
     if (completedCrop && originalFile && imgRef.current) {
         console.log('📸 Processing image crop...');
-        const croppedBlob = await getCroppedImgBlob(imgRef.current, completedCrop, originalFile.name);
-        if (croppedBlob) {
-            formData.append('shopImage', croppedBlob, originalFile.name);
+        try {
+          const croppedBlob = await getCroppedImgBlob(imgRef.current, completedCrop, originalFile.name);
+          if (croppedBlob) {
+            formData.append('shopImage', croppedBlob, croppedBlob.name);
+          }
+        } catch (err: unknown) {
+          const msg = humanizeShopImageError(err instanceof Error ? err.message : String(err));
+          toast({ variant: 'destructive', title: 'Shop image', description: msg });
+          return;
         }
     }
     
@@ -928,8 +971,20 @@ export function SignupForm() {
 
         <FormItem className="flex flex-col items-center p-4 border rounded-md bg-muted/30">
           <FormLabel className="font-semibold mb-2 text-center">Shop Display Picture</FormLabel>
-          <div className="w-40 h-auto self-center rounded-md overflow-hidden border flex items-center justify-center bg-background mb-4">
-              <Image src={imgSrc || 'https://placehold.co/150x100.png'} alt="Shop Preview" width={TARGET_IMAGE_WIDTH} height={TARGET_IMAGE_HEIGHT} className="object-cover" />
+          <div className="w-40 h-auto self-center rounded-md overflow-hidden border flex items-center justify-center bg-background mb-4 relative">
+              {isPreparingImage ? (
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imgSrc || 'https://placehold.co/150x100.png'}
+                  alt="Shop Preview"
+                  width={TARGET_IMAGE_WIDTH}
+                  height={TARGET_IMAGE_HEIGHT}
+                  className="object-cover"
+                  style={{ width: TARGET_IMAGE_WIDTH, height: TARGET_IMAGE_HEIGHT }}
+                />
+              )}
           </div>
           
           {/* Hidden file inputs for camera and gallery */}
@@ -969,7 +1024,8 @@ export function SignupForm() {
             <Button 
               type="button" 
               variant="outline" 
-              onClick={handleCameraCapture} 
+              onClick={handleCameraCapture}
+              disabled={isPreparingImage || isPending}
               className="flex items-center justify-center gap-2 flex-1 sm:flex-initial"
             >
               <Camera className="h-4 w-4" /> Take Photo
@@ -977,7 +1033,8 @@ export function SignupForm() {
             <Button 
               type="button" 
               variant="outline" 
-              onClick={handleGallerySelect} 
+              onClick={handleGallerySelect}
+              disabled={isPreparingImage || isPending}
               className="flex items-center justify-center gap-2 flex-1 sm:flex-initial"
             >
               <ImageIcon className="h-4 w-4" /> Choose from Gallery

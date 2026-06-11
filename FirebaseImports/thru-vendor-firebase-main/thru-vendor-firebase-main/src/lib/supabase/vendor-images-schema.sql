@@ -39,3 +39,11 @@ create policy "vendor_images_delete_own"
     and (storage.foldername(name))[1] = 'vendor_shop_images'
     and (storage.foldername(name))[2] = auth.uid()::text
   );
+
+-- Server signup/profile uploads use service role (bypasses RLS). Listed for documentation.
+drop policy if exists "vendor_images_service_role_all" on storage.objects;
+create policy "vendor_images_service_role_all"
+  on storage.objects for all
+  to service_role
+  using (bucket_id = 'vendor-images')
+  with check (bucket_id = 'vendor-images');

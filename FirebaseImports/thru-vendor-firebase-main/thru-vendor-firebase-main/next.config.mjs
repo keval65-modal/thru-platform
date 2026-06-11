@@ -31,6 +31,12 @@ const nextConfig = {
     typescript: {
         ignoreBuildErrors: true, // Temporarily ignore TypeScript errors to get deployment working
     },
+    experimental: {
+        serverActions: {
+            // Signup FormData includes a cropped shop image (~50–200 KB); allow headroom for large originals.
+            bodySizeLimit: '4mb',
+        },
+    },
 };
 
 export default nextConfig;
