@@ -27,6 +27,20 @@ type OrderFlowContextValue = OrderFlowState & {
 
 const OrderFlowContext = React.createContext<OrderFlowContextValue | null>(null);
 
+function routeCoordsEqual(
+  a: OrderFlowState['routeCoords'],
+  b: OrderFlowState['routeCoords']
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.start.lat === b.start.lat &&
+    a.start.lng === b.start.lng &&
+    a.dest.lat === b.dest.lat &&
+    a.dest.lng === b.dest.lng
+  );
+}
+
 export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<OrderFlowState>(defaultOrderFlowState);
   const [hydrated, setHydrated] = React.useState(false);
@@ -45,48 +59,121 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => ({ ...prev, ...partial }));
   }, []);
 
+  const setStart = React.useCallback((query: string, coords: string | null) => {
+    setState((prev) => ({
+      ...prev,
+      startLocationQuery: query,
+      selectedStartLocation: coords,
+    }));
+  }, []);
+
+  const setDestination = React.useCallback((query: string, coords: string | null) => {
+    setState((prev) => ({
+      ...prev,
+      destinationQuery: query,
+      selectedDestination: coords,
+    }));
+  }, []);
+
+  const setRouteCoords = React.useCallback((coords: OrderFlowState['routeCoords']) => {
+    setState((prev) => {
+      if (routeCoordsEqual(prev.routeCoords, coords)) return prev;
+      return { ...prev, routeCoords: coords };
+    });
+  }, []);
+
+  const setDeparture = React.useCallback((time: string, immediate: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      departureTime: time,
+      isImmediate: immediate,
+    }));
+  }, []);
+
+  const setRouteStops = React.useCallback((stops: RouteStop[]) => {
+    setState((prev) => ({ ...prev, routeStops: stops }));
+  }, []);
+
+  const toggleCategory = React.useCallback((category: OrderCategory) => {
+    setState((prev) => ({
+      ...prev,
+      categories: prev.categories.includes(category)
+        ? prev.categories.filter((c) => c !== category)
+        : [...prev.categories, category],
+    }));
+  }, []);
+
+  const addGroceryItem = React.useCallback((item: Omit<GroceryListItem, 'id'>) => {
+    setState((prev) => ({
+      ...prev,
+      groceryItems: [
+        ...prev.groceryItems,
+        { ...item, id: `grocery_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` },
+      ],
+    }));
+  }, []);
+
+  const updateGroceryItem = React.useCallback((id: string, itemPatch: Partial<GroceryListItem>) => {
+    setState((prev) => ({
+      ...prev,
+      groceryItems: prev.groceryItems.map((i) => (i.id === id ? { ...i, ...itemPatch } : i)),
+    }));
+  }, []);
+
+  const removeGroceryItem = React.useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      groceryItems: prev.groceryItems.filter((i) => i.id !== id),
+    }));
+  }, []);
+
+  const setRouteOptions = React.useCallback((options: RouteOption[]) => {
+    setState((prev) => ({ ...prev, routeOptions: options }));
+  }, []);
+
+  const selectRouteOption = React.useCallback((id: string) => {
+    setState((prev) => ({ ...prev, selectedRouteOptionId: id }));
+  }, []);
+
+  const reset = React.useCallback(() => {
+    setState(defaultOrderFlowState());
+  }, []);
+
   const value = React.useMemo<OrderFlowContextValue>(
     () => ({
       ...state,
       hydrated,
-      setStart: (query, coords) =>
-        patch({ startLocationQuery: query, selectedStartLocation: coords }),
-      setDestination: (query, coords) =>
-        patch({ destinationQuery: query, selectedDestination: coords }),
-      setRouteCoords: (coords) => patch({ routeCoords: coords }),
-      setDeparture: (time, immediate) => patch({ departureTime: time, isImmediate: immediate }),
-      setRouteStops: (stops) => patch({ routeStops: stops }),
-      toggleCategory: (category) =>
-        setState((prev) => ({
-          ...prev,
-          categories: prev.categories.includes(category)
-            ? prev.categories.filter((c) => c !== category)
-            : [...prev.categories, category],
-        })),
-      addGroceryItem: (item) =>
-        setState((prev) => ({
-          ...prev,
-          groceryItems: [
-            ...prev.groceryItems,
-            { ...item, id: `grocery_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` },
-          ],
-        })),
-      updateGroceryItem: (id, itemPatch) =>
-        setState((prev) => ({
-          ...prev,
-          groceryItems: prev.groceryItems.map((i) => (i.id === id ? { ...i, ...itemPatch } : i)),
-        })),
-      removeGroceryItem: (id) =>
-        setState((prev) => ({
-          ...prev,
-          groceryItems: prev.groceryItems.filter((i) => i.id !== id),
-        })),
-      setRouteOptions: (options) => patch({ routeOptions: options }),
-      selectRouteOption: (id) => patch({ selectedRouteOptionId: id }),
+      setStart,
+      setDestination,
+      setRouteCoords,
+      setDeparture,
+      setRouteStops,
+      toggleCategory,
+      addGroceryItem,
+      updateGroceryItem,
+      removeGroceryItem,
+      setRouteOptions,
+      selectRouteOption,
       patch,
-      reset: () => setState(defaultOrderFlowState()),
+      reset,
     }),
-    [state, hydrated, patch]
+    [
+      state,
+      hydrated,
+      setStart,
+      setDestination,
+      setRouteCoords,
+      setDeparture,
+      setRouteStops,
+      toggleCategory,
+      addGroceryItem,
+      updateGroceryItem,
+      removeGroceryItem,
+      setRouteOptions,
+      selectRouteOption,
+      patch,
+      reset,
+    ]
   );
 
   return <OrderFlowContext.Provider value={value}>{children}</OrderFlowContext.Provider>;

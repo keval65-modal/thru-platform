@@ -19,8 +19,30 @@ import { cn } from '@/lib/utils';
 import type { SavedDestination } from '@/types/saved-destinations';
 
 function formatTimeDisplay(dateString: string) {
+  if (!dateString) return 'Pick time';
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'Pick time';
   return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function parseCoordString(str: string | null): { lat: number; lng: number } | null {
+  if (!str) return null;
+  const m = str.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+  if (!m) return null;
+  return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+}
+
+function buildDepartureIso(hours: number, minutes: number): string {
+  const now = new Date();
+  const selected = new Date(now);
+  selected.setHours(hours, minutes, 0, 0);
+  if (selected < now) selected.setDate(selected.getDate() + 1);
+  const y = selected.getFullYear();
+  const mo = String(selected.getMonth() + 1).padStart(2, '0');
+  const d = String(selected.getDate()).padStart(2, '0');
+  const h = String(selected.getHours()).padStart(2, '0');
+  const mi = String(selected.getMinutes()).padStart(2, '0');
+  return `${y}-${mo}-${d}T${h}:${mi}`;
 }
 
 export function DestinationForm() {
@@ -78,14 +100,8 @@ export function DestinationForm() {
   }, [mapsReady, setStart, setDestination]);
 
   React.useEffect(() => {
-    const parse = (str: string | null) => {
-      if (!str) return null;
-      const m = str.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
-      if (!m) return null;
-      return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
-    };
-    const start = parse(flow.selectedStartLocation);
-    const dest = parse(flow.selectedDestination);
+    const start = parseCoordString(flow.selectedStartLocation);
+    const dest = parseCoordString(flow.selectedDestination);
     if (start && dest) setRouteCoords({ start, dest });
   }, [flow.selectedStartLocation, flow.selectedDestination, setRouteCoords]);
 
@@ -140,41 +156,40 @@ export function DestinationForm() {
   }, [mapsReady, flow.selectedStartLocation, handleUseCurrentLocation]);
 
   const handleImmediate = (checked: boolean) => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const mo = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const h = String(now.getHours()).padStart(2, '0');
+    const mi = String(now.getMinutes()).padStart(2, '0');
     if (checked) {
-      const now = new Date();
-      const y = now.getFullYear();
-      const mo = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      const h = String(now.getHours()).padStart(2, '0');
-      const mi = String(now.getMinutes()).padStart(2, '0');
       setDeparture(`${y}-${mo}-${d}T${h}:${mi}`, true);
     } else {
-      setDeparture('', false);
+      const scheduled = flow.departureTime && !flow.isImmediate
+        ? flow.departureTime
+        : buildDepartureIso(now.getHours(), Math.min(now.getMinutes() + 30, 59));
+      setDeparture(scheduled, false);
     }
   };
 
   const handleTimeSelect = (time24h: string) => {
-    const now = new Date();
     const [hours, minutes] = time24h.split(':');
-    const selected = new Date(now);
-    selected.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-    if (selected < now) selected.setDate(selected.getDate() + 1);
-    setDeparture(selected.toISOString().slice(0, 16), false);
+    setDeparture(buildDepartureIso(parseInt(hours, 10), parseInt(minutes, 10)), false);
     setShowTimePicker(false);
   };
 
   const destDraft = React.useMemo(() => {
-    if (!flow.selectedDestination) return null;
-    const m = flow.selectedDestination.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
-    if (!m) return null;
+    const coords = parseCoordString(flow.selectedDestination);
+    if (!coords) return null;
     return {
-      address: flow.destinationQuery || flow.selectedDestination,
-      latitude: parseFloat(m[1]),
-      longitude: parseFloat(m[2]),
+      address: flow.destinationQuery || flow.selectedDestination || '',
+      latitude: coords.lat,
+      longitude: coords.lng,
     };
   }, [flow.selectedDestination, flow.destinationQuery]);
 
   const applySaved = (dest: SavedDestination) => {
+    if (dest.latitude == null || dest.longitude == null) return;
     const coords = `${dest.latitude}, ${dest.longitude}`;
     setDestination(dest.address, coords);
     const el = document.getElementById('order-dest') as HTMLInputElement | null;
@@ -237,7 +252,13 @@ export function DestinationForm() {
         destinationDraft={destDraft}
         onApplyDestination={applySaved}
         onSaveDestination={(input) => saveDestination({ ...input, phone: user?.phoneNumber ?? null })}
-        onDeleteDestination={removeDestination}
+        onDeleteDestination={async (id) => {
+          try {
+            await removeDestination(id);
+          } catch {
+            toast({ variant: 'destructive', title: 'Could not remove saved place' });
+          }
+        }}
       />
 
       <div className="flex flex-wrap items-center gap-3">
