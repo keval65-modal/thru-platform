@@ -43,6 +43,7 @@ import { VendorOffersDisplay } from "@/components/VendorOffersDisplay";
 import { DynamicProduct } from "@/lib/scalable-grocery-ai-service";
 import { purchasePatternTracker } from "@/lib/purchase-pattern-tracker";
 import { VendorRequestPayload, AggregatedItemOffer } from "@/types/vendor-requests";
+import { MaxDetourSlider } from "@/components/home/MaxDetourSlider";
 import { enhancedOrderService } from "@/lib/enhanced-order-service";
 import { routeBasedShopDiscovery, RoutePoint } from "@/lib/route-based-shop-discovery";
 import { useFoodCart } from "@/hooks/useFoodCart";
@@ -1181,19 +1182,7 @@ function HomePageContent() {
               </div>
             </div>
             
-            <div className="mt-4">
-              <Label htmlFor="detour-slider" className="text-sm font-medium">Max Detour: {maxDetourKm} km</Label>
-              <input
-                id="detour-slider"
-                type="range"
-                min="0.5"
-                max="20"
-                step="0.5"
-                value={maxDetourKm}
-                onChange={(e) => setMaxDetourKm(parseFloat(e.target.value))}
-                className="w-full mt-2"
-              />
-            </div>
+            <MaxDetourSlider value={maxDetourKm} onChange={setMaxDetourKm} className="mt-4" />
 
             {/* Add Stops Button */}
             <div className="mt-4 flex justify-center">
@@ -1209,54 +1198,49 @@ function HomePageContent() {
 
           {/* Add Stops Dialog */}
           <Dialog open={showAddStop} onOpenChange={setShowAddStop}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md overflow-x-hidden">
               <DialogHeader>
-                <DialogTitle>Add Route Stops</DialogTitle>
+                <DialogTitle>Add route stop</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <div>
+              <div className="space-y-4 min-w-0">
+                <div className="min-w-0">
                   <Label htmlFor="stop-name" className="text-sm font-medium">Search for a place</Label>
-                  <div className="relative">
+                  <div className="relative mt-1.5">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="stop-name"
-                      placeholder="Search for places, landmarks, or addresses..."
+                      placeholder="Search for places..."
                       value={newStopName}
                       onChange={(e) => setNewStopName(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 w-full"
                     />
                     {isLoadingSuggestions && (
                       <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
                     )}
                   </div>
                   
-                  {/* Google Places Suggestions */}
                   {stopSuggestions.length > 0 && (
-                    <div className="border rounded-lg bg-background shadow-sm mt-2 max-h-48 overflow-y-auto">
-                      <div className="p-2 text-sm font-medium text-muted-foreground border-b">
-                        Google Places Suggestions
-                      </div>
+                    <div className="border rounded-lg bg-background shadow-sm mt-2 max-h-48 overflow-y-auto overflow-x-hidden">
                       {stopSuggestions.map((suggestion) => (
-                        <div
+                        <button
                           key={suggestion.place_id}
-                          className="flex items-center justify-between p-3 hover:bg-muted cursor-pointer border-b last:border-b-0"
+                          type="button"
+                          className="flex w-full min-w-0 items-center gap-2 p-3 text-left hover:bg-muted border-b last:border-b-0"
                           onClick={() => addRouteStop(suggestion)}
                         >
-                          <div className="flex-1">
-                            <p className="font-medium">{suggestion.description}</p>
-              </div>
-                          <Button size="sm" variant="outline">
+                          <p className="font-medium flex-1 min-w-0 text-sm line-clamp-2">{suggestion.description}</p>
+                          <span className="shrink-0 text-xs font-medium text-primary px-2 py-1 rounded-md border border-primary/30 bg-primary/5">
                             Add
-                          </Button>
-            </div>
+                          </span>
+                        </button>
                       ))}
                     </div>
                   )}
-          </div>
+                </div>
 
-              <div>
-                  <Label className="text-sm font-medium">Stop Type</Label>
-                  <div className="flex space-x-2 mt-1">
+                <div className="min-w-0">
+                  <Label className="text-sm font-medium">Stop type</Label>
+                  <div className="flex flex-wrap gap-2 mt-1.5">
                     {[
                       { value: 'grocery', label: 'Grocery', icon: Store },
                       { value: 'food', label: 'Food', icon: Utensils },
@@ -1267,27 +1251,31 @@ function HomePageContent() {
                         variant={newStopType === type.value ? "default" : "outline"}
                         size="sm"
                         onClick={() => setNewStopType(type.value as 'grocery' | 'food' | 'other')}
-                        className="flex items-center space-x-1"
+                        className="flex items-center gap-1 shrink-0"
                       >
                         <type.icon className="h-3 w-3" />
                         <span>{type.label}</span>
                       </Button>
                     ))}
-              </div>
-            </div>
+                  </div>
+                </div>
                 
-                <div className="flex space-x-2">
-                  <Button onClick={() => addRouteStop()} disabled={!newStopName.trim()}>
-                    Add Stop
-                  </Button>
-                  <Button variant="outline" onClick={() => {
-                    setShowAddStop(false);
-                    setNewStopName("");
-                    setStopSuggestions([]);
-                  }}>
+                <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddStop(false);
+                      setNewStopName("");
+                      setStopSuggestions([]);
+                    }}
+                    className="w-full sm:flex-1"
+                  >
                     Cancel
                   </Button>
-          </div>
+                  <Button onClick={() => addRouteStop()} disabled={!newStopName.trim()} className="w-full sm:flex-1">
+                    Add stop
+                  </Button>
+                </div>
               </div>
             </DialogContent>
           </Dialog>

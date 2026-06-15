@@ -5,5 +5,5 @@ import { redirect } from 'next/navigation';
  * customer product; send users straight to the main experience.
  */
 export default function RootPage() {
-  redirect('/home');
+  redirect('/order/destination');
 }

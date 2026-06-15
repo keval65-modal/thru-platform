@@ -13,7 +13,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: '/home', label: 'Home', icon: HomeIcon },
+  { href: '/order/destination', label: 'Home', icon: HomeIcon },
   { href: '/map', label: 'Map', icon: MapIcon },
   { href: '/orders', label: 'Orders', icon: ListOrdered },
   { href: '/profile', label: 'Profile', icon: User },
@@ -27,7 +27,7 @@ export default function BottomNav() {
       <div className="mx-auto flex h-16 max-w-md items-center justify-around px-2">
         {navItems.map((item) => {
           const isActive = pathname === item.href || 
-                           (item.href === "/home" && pathname === "/") ||
+                           (item.href === "/order/destination" && (pathname === "/" || pathname.startsWith("/order"))) ||
                            (item.href === "/profile" && pathname.startsWith("/profile")) ||
                            (item.label === "Orders" && pathname.startsWith("/order-tracking")); // Make orders active during tracking
           return (
