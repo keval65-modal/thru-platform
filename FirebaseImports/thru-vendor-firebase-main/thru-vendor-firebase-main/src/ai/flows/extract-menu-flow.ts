@@ -104,12 +104,19 @@ const ExtractMenuPageOutputSchema = z.object({
 })
 export type ExtractMenuPageOutput = z.infer<typeof ExtractMenuPageOutputSchema>
 
-const IMAGE_READABILITY_PROMPT = `You are an expert menu OCR assistant reviewing a photo of a restaurant menu page.
+const IMAGE_READABILITY_PROMPT = `You are an expert menu OCR assistant reviewing a photo or screenshot of a restaurant menu page.
 
-First assess whether the image is readable enough to extract menu items:
-- Mark isReadable false if the image is blurry, too dark, cropped badly, shows no menu text, is blank, or prices/names cannot be distinguished.
-- When isReadable is false, set readabilityIssue to a helpful one-sentence explanation for the vendor (e.g. "Photo is too blurry — retake in good light and hold the camera steady.").
-- When isReadable is true, extract every orderable food or beverage item with category, item name, price text, and description if visible.
+Menus may be printed pages, phone photos, PDF screenshots, or spreadsheet/table exports with columns (e.g. CategoryName, ItemName, ItemBasePrice).
+
+Assess readability:
+- Mark isReadable TRUE when item names and prices are legible, including clear spreadsheet/table layouts and screenshots.
+- Ignore faint watermarks if the menu text underneath is readable.
+- Mark isReadable FALSE only when blurry, too dark, blank, severely cropped, or names/prices cannot be distinguished.
+
+When isReadable is true, extract every orderable food or beverage item:
+- Map table columns to category, itemName, and price.
+- Use the category column value or section header as category.
+- Price may be a plain number (e.g. 220) — return it as a string.
 
 Respond with JSON only. No markdown.`
 
@@ -130,17 +137,12 @@ export async function extractMenuData(input: ExtractMenuInput): Promise<ExtractM
     throw new Error('Menu extraction model returned invalid JSON.')
   }
 
-  const validation = ExtractMenuOutputSchema.safeParse(parsed)
-  if (!validation.success) {
-    console.error('[extractMenuData] OpenAI output validation failed:', validation.error.flatten())
-    throw new Error('Menu extraction result failed validation.')
-  }
-
+  const validation = validateMenuOutput(parsed)
   console.log(
-    `[extractMenuFlow] Successfully extracted ${validation.data.extractedItems.length} items for vendor: ${payload.vendorId}`,
+    `[extractMenuFlow] Successfully extracted ${validation.extractedItems.length} items for vendor: ${payload.vendorId}`,
   )
 
-  return validation.data
+  return validation
 }
 
 function errorMessage(error: unknown): string {
@@ -208,19 +210,37 @@ async function extractMenuDataFromOpenAiPdf(
     throw new Error('OpenAI PDF extraction returned invalid JSON.')
   }
 
-  const validation = ExtractMenuOutputSchema.safeParse(parsed)
-  if (!validation.success) {
-    console.error('[extractMenuDataFromOpenAiPdf] Output validation failed:', validation.error.flatten())
-    throw new Error('OpenAI PDF extraction result failed validation.')
-  }
-
-  return validation.data
+  return validateMenuOutput(parsed)
 }
 
 export async function extractMenuFromImagePage(
   input: ExtractMenuImageInput,
 ): Promise<ExtractMenuPageOutput> {
   const payload = ExtractMenuImageInputSchema.parse(input)
+  const failures: string[] = []
+
+  try {
+    return await extractMenuImagePageViaGemini(payload)
+  } catch (error) {
+    failures.push(errorMessage(error))
+    console.warn('[extractMenuFlow] Gemini image extraction failed:', error)
+  }
+
+  if (openaiClient) {
+    try {
+      return await extractMenuImagePageViaOpenAi(payload)
+    } catch (error) {
+      failures.push(errorMessage(error))
+      console.warn('[extractMenuFlow] OpenAI image extraction failed:', error)
+    }
+  }
+
+  throw new Error(failures[0] ?? 'All menu image extraction providers failed.')
+}
+
+async function extractMenuImagePageViaGemini(
+  payload: ExtractMenuImageInput,
+): Promise<ExtractMenuPageOutput> {
   const outputText = await extractViaGeminiImage(
     payload.vendorId,
     payload.menuImageDataUri,
@@ -231,17 +251,11 @@ export async function extractMenuFromImagePage(
   try {
     parsed = parseModelJson(outputText)
   } catch (error) {
-    console.error('[extractMenuFromImagePage] Failed parsing model output:', outputText)
+    console.error('[extractMenuFromImagePage] Failed parsing Gemini output:', outputText)
     throw new Error('Menu image extraction model returned invalid JSON.')
   }
 
-  const validation = ExtractMenuPageOutputSchema.safeParse(parsed)
-  if (!validation.success) {
-    console.error('[extractMenuFromImagePage] Output validation failed:', validation.error.flatten())
-    throw new Error('Menu image extraction result failed validation.')
-  }
-
-  const result = validation.data
+  const result = validateMenuPageOutput(parsed)
   if (!result.isReadable) {
     console.log(
       `[extractMenuFlow] Page ${payload.pageNumber ?? '?'} unreadable for vendor ${payload.vendorId}: ${result.readabilityIssue ?? 'unknown'}`,
@@ -251,6 +265,38 @@ export async function extractMenuFromImagePage(
 
   console.log(
     `[extractMenuFlow] Extracted ${result.extractedItems.length} items from image page ${payload.pageNumber ?? '?'} for vendor ${payload.vendorId}`,
+  )
+  return result
+}
+
+async function extractMenuImagePageViaOpenAi(
+  payload: ExtractMenuImageInput,
+): Promise<ExtractMenuPageOutput> {
+  if (!openaiClient) {
+    throw new Error('OPENAI_API_KEY is not configured. Unable to run OpenAI image extraction.')
+  }
+
+  const outputText = await extractViaOpenAiImage(
+    payload.vendorId,
+    payload.menuImageDataUri,
+    payload.pageNumber,
+  )
+
+  let parsed: unknown
+  try {
+    parsed = parseModelJson(outputText)
+  } catch (error) {
+    console.error('[extractMenuFromImagePage] Failed parsing OpenAI output:', outputText)
+    throw new Error('OpenAI image extraction returned invalid JSON.')
+  }
+
+  const result = validateMenuPageOutput(parsed)
+  if (!result.isReadable) {
+    return { ...result, extractedItems: [] }
+  }
+
+  console.log(
+    `[extractMenuFlow] OpenAI extracted ${result.extractedItems.length} items from page ${payload.pageNumber ?? '?'}`,
   )
   return result
 }
@@ -338,6 +384,108 @@ function parseModelJson(outputText: string): unknown {
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
   const jsonText = fenced ? fenced[1].trim() : trimmed
   return JSON.parse(jsonText)
+}
+
+/** Coerce common model/table variants before Zod validation. */
+function normalizeMenuExtractionPayload(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== 'object') return parsed
+  const root = parsed as Record<string, unknown>
+  if (!Array.isArray(root.extractedItems)) return parsed
+
+  const extractedItems = root.extractedItems.map((entry) => {
+    if (!entry || typeof entry !== 'object') return entry
+    const row = entry as Record<string, unknown>
+
+    const category = String(
+      row.category ?? row.Category ?? row.CategoryName ?? row.categoryName ?? 'Other',
+    ).trim()
+    const itemName = String(
+      row.itemName ?? row.name ?? row.Name ?? row.ItemName ?? row.item ?? '',
+    ).trim()
+    const rawPrice = row.price ?? row.Price ?? row.ItemBasePrice ?? row.basePrice ?? ''
+    const price = rawPrice === null || rawPrice === undefined ? '' : String(rawPrice).trim()
+    const description = row.description ?? row.Description
+
+    return {
+      category: category || 'Other',
+      itemName,
+      price,
+      ...(description != null && String(description).trim()
+        ? { description: String(description).trim() }
+        : {}),
+    }
+  })
+
+  return {
+    ...root,
+    isReadable: typeof root.isReadable === 'boolean' ? root.isReadable : root.isReadable,
+    readabilityIssue:
+      typeof root.readabilityIssue === 'string' ? root.readabilityIssue : root.readabilityIssue,
+    extractedItems,
+  }
+}
+
+function validateMenuOutput(parsed: unknown): ExtractMenuOutput {
+  const normalized = normalizeMenuExtractionPayload(parsed)
+  const validation = ExtractMenuOutputSchema.safeParse(normalized)
+  if (!validation.success) {
+    console.error('[extractMenuFlow] Output validation failed:', validation.error.flatten())
+    throw new Error('Menu extraction result failed validation.')
+  }
+  return validation.data
+}
+
+function validateMenuPageOutput(parsed: unknown): ExtractMenuPageOutput {
+  const normalized = normalizeMenuExtractionPayload(parsed)
+  const validation = ExtractMenuPageOutputSchema.safeParse(normalized)
+  if (!validation.success) {
+    console.error('[extractMenuFlow] Page output validation failed:', validation.error.flatten())
+    throw new Error('Menu image extraction result failed validation.')
+  }
+  return validation.data
+}
+
+async function extractViaOpenAiImage(
+  vendorId: string,
+  menuImageDataUri: string,
+  pageNumber?: number,
+): Promise<string> {
+  if (!openaiClient) {
+    throw new Error('OPENAI_API_KEY is not configured. Unable to run OpenAI image extraction.')
+  }
+
+  const pageLabel = pageNumber ? `Page ${pageNumber}` : 'This page'
+
+  const response = await openaiClient.responses.create({
+    model: openAiMenuVisionModel,
+    input: [
+      {
+        role: 'system',
+        content: [{ type: 'input_text', text: `${IMAGE_READABILITY_PROMPT}\n\n${SYSTEM_PROMPT}` }],
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_image',
+            image_url: menuImageDataUri,
+            detail: 'high',
+          },
+          {
+            type: 'input_text',
+            text: `Vendor ID: ${vendorId}. ${pageLabel} of a menu (photo or screenshot).
+Assess readability, then extract items. Return ONLY JSON matching the schema (no markdown).
+
+${JSON.stringify(IMAGE_PAGE_RESPONSE_JSON_SCHEMA)}`,
+          },
+        ],
+      },
+    ],
+  })
+
+  const outputText = response.output_text?.trim()
+  if (!outputText) throw new Error('OpenAI did not return any content for image menu extraction.')
+  return outputText
 }
 
 async function extractViaGeminiPdf(vendorId: string, menuDataUri: string): Promise<string> {

@@ -137,7 +137,7 @@ export async function POST(request: Request) {
           pageNumber: page.pageNumber,
           fileName: page.fileName ?? `Page ${page.pageNumber}`,
           isReadable: false,
-          readabilityIssue: 'We could not process this photo. Please retake it in better lighting.',
+          readabilityIssue: formatMenuExtractionError(error),
           itemsFound: 0,
         })
       }
