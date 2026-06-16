@@ -158,14 +158,14 @@ export function GroceryListEditor() {
             Tap the unit label to pick kg, packet, and more
           </p>
           <div className="divide-y divide-border/40">
-          {groceryItems.map((item) => (
-            <GroceryItemRow
-              key={item.id}
-              item={item}
-              onChange={(patch) => updateGroceryItem(item.id, patch)}
-              onRemove={() => removeGroceryItem(item.id)}
-            />
-          ))}
+            {groceryItems.map((item) => (
+              <GroceryItemRow
+                key={item.id}
+                item={item}
+                onChange={(patch) => updateGroceryItem(item.id, patch)}
+                onRemove={() => removeGroceryItem(item.id)}
+              />
+            ))}
           </div>
         </div>
       ) : (

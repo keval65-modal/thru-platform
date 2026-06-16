@@ -3,6 +3,7 @@ import {
   analyzePrescriptionImage,
   mockAnalyzePrescription,
 } from '@/ai/flows/analyze-prescription-flow';
+import { isGoogleAiConfigured } from '@/lib/google-ai-config';
 import { prescriptionValidationMessage } from '@/lib/prescription-validation';
 
 export const maxDuration = 60;
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as { imageDataUri?: string; useMock?: boolean };
     const { imageDataUri, useMock } = body;
 
-    if (useMock || !process.env.GOOGLE_AI_API_KEY) {
+    if (useMock === true) {
       const mock = mockAnalyzePrescription();
       return NextResponse.json({
         success: true,
@@ -24,6 +25,16 @@ export async function POST(request: NextRequest) {
         medicines: mock.medicinesWithIds,
         notes: mock.notes,
       });
+    }
+
+    if (!isGoogleAiConfigured()) {
+      return NextResponse.json(
+        {
+          error:
+            'Google AI is not configured. Set GOOGLE_AI_API_KEY or GENKIT_GOOGLE_AI_API_KEY in your environment.',
+        },
+        { status: 503 }
+      );
     }
 
     if (!imageDataUri?.startsWith('data:image/')) {

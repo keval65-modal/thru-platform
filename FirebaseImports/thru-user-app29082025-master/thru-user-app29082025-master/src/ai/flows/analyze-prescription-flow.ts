@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ai } from '@/ai/genkit';
+import { ai, prescriptionAnalysisModel } from '@/ai/genkit';
+import { getGoogleAiApiKey } from '@/lib/google-ai-config';
 import { generateMedicineLineId, isPrescriptionDateValid } from '@/lib/prescription-types';
 
 const AnalyzePrescriptionInputSchema = z.object({
@@ -47,9 +48,16 @@ export async function analyzePrescriptionImage(
     medicinesWithIds: { id: string; name: string; dosage?: string; quantity: number }[];
   }
 > {
+  if (!getGoogleAiApiKey()) {
+    throw new Error(
+      'Google AI API key is not configured. Set GOOGLE_AI_API_KEY or GENKIT_GOOGLE_AI_API_KEY.'
+    );
+  }
+
   const payload = AnalyzePrescriptionInputSchema.parse(input);
 
   const response = await ai.generate({
+    model: prescriptionAnalysisModel,
     prompt: [
       { text: PROMPT },
       { media: { url: payload.imageDataUri } },
@@ -90,7 +98,7 @@ export function mockAnalyzePrescription(): AnalyzePrescriptionOutput & {
     prescriptionDate,
     doctorName: 'Dr. Demo',
     medicines: [{ name: 'Paracetamol 500mg', dosage: '1 strip', suggestedQuantity: 1 }],
-    notes: 'Demo parse — configure GOOGLE_AI_API_KEY for live vision.',
+    notes: 'Demo parse — pass useMock: true or configure GOOGLE_AI_API_KEY for live vision.',
     dateValid: true,
     medicinesWithIds: [
       { id: generateMedicineLineId(), name: 'Paracetamol 500mg', dosage: '1 strip', quantity: 1 },

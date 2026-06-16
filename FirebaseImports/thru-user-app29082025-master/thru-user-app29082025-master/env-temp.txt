@@ -10,6 +10,8 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=placeholder_measurement_id
 # Google Maps API (Replace with your actual values)
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=placeholder_google_maps_key
 
-# Genkit AI (Replace with your actual values)
-GENKIT_GOOGLE_AI_API_KEY=placeholder_genkit_key
+# Google AI / Gemini (for prescription vision analysis)
+GOOGLE_AI_API_KEY=your_google_ai_api_key_here
+# Legacy alias — either variable works
+GENKIT_GOOGLE_AI_API_KEY=your_google_ai_api_key_here
 
