@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server'
 
 import { getSession } from '@/lib/auth'
-import { uploadMenuItemImage } from '@/lib/supabase-auth'
+import { getSupabaseServiceDbClient, uploadMenuItemImage } from '@/lib/supabase-auth'
 import { isMenuUploadEnabled } from '@/lib/vendor-features'
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -58,6 +58,25 @@ export async function POST(request: Request) {
         { error: result.error || 'Failed to upload image.' },
         { status: 500 },
       )
+    }
+
+    if (stableItemId) {
+      const supabase = getSupabaseServiceDbClient()
+      if (supabase) {
+        const { error: updateError } = await supabase
+          .from('menu_items')
+          .update({ image_url: result.url })
+          .eq('id', stableItemId)
+          .eq('vendor_id', session.id)
+
+        if (updateError) {
+          console.error('[Menu Item Image] Failed to update menu item:', updateError)
+          return NextResponse.json(
+            { error: 'Image uploaded but failed to link to menu item.' },
+            { status: 500 },
+          )
+        }
+      }
     }
 
     return NextResponse.json({ url: result.url })

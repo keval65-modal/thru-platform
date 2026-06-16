@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { MenuItem } from '@/lib/supabase'
-import { Plus, Edit, Trash2, Loader2, UploadCloud, Camera, X, AlertTriangle } from 'lucide-react'
+import { Plus, Edit, Trash2, Loader2, UploadCloud, Camera, X, AlertTriangle, ImageIcon } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useSession } from '@/hooks/use-session'
 import { isMenuUploadEnabled } from '@/lib/vendor-features'
@@ -33,6 +33,8 @@ import {
 } from '@/lib/menu-image'
 import Link from 'next/link'
 import { MenuItemImageUpload } from '@/components/menu/MenuItemImageUpload'
+import { MenuBulkPhotoDialog } from '@/components/menu/MenuBulkPhotoDialog'
+import { Checkbox } from '@/components/ui/checkbox'
 
 // Fallback vendor ID for local testing (real session ID overrides this)
 const VENDOR_ID = '8c027b0f-394c-4c3e-a20c-56ad675366d2'
@@ -93,6 +95,9 @@ export default function MenuPage() {
   const [replaceExistingMenu, setReplaceExistingMenu] = useState(true)
   const [replaceExistingCameraMenu, setReplaceExistingCameraMenu] = useState(true)
   const [lastScanResults, setLastScanResults] = useState<PageScanResult[] | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isBulkPhotoDialogOpen, setIsBulkPhotoDialogOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   useEffect(() => {
     if (sessionLoading) return
@@ -485,6 +490,11 @@ export default function MenuPage() {
         title: 'Success',
         description: 'Menu item deleted successfully'
       })
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       loadMenuItems()
     } catch (error) {
       console.error('Error deleting menu item:', error)
@@ -530,6 +540,77 @@ export default function MenuPage() {
       preparation_time: ''
     })
     setEditingItem(null)
+  }
+
+  const selectedCount = selectedIds.size
+  const selectedItems = menuItems.filter((item) => selectedIds.has(item.id))
+
+  const toggleItemSelection = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const toggleCategorySelection = (items: MenuItem[], checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      items.forEach((item) => {
+        if (checked) next.add(item.id)
+        else next.delete(item.id)
+      })
+      return next
+    })
+  }
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(menuItems.map((item) => item.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const handleBulkDelete = async () => {
+    if (!selectedCount) return
+    if (!confirm(`Delete ${selectedCount} selected menu item(s)? This cannot be undone.`)) return
+
+    try {
+      setBulkDeleting(true)
+      const response = await fetch('/api/menu/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to delete selected items')
+      }
+      toast({
+        title: 'Deleted',
+        description: payload.message || `Deleted ${selectedCount} item(s).`,
+      })
+      clearSelection()
+      await loadMenuItems()
+    } catch (error) {
+      console.error('Error bulk deleting menu items:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete selected items',
+        variant: 'destructive',
+      })
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  const handleBulkPhotosComplete = async () => {
+    clearSelection()
+    await loadMenuItems()
   }
 
   const groupedItems = menuItems.reduce((acc, item) => {
@@ -917,19 +998,121 @@ export default function MenuPage() {
         </Card>
       ) : menuAllowed ? (
         <div className="space-y-6">
-          {Object.entries(groupedItems).map(([category, items]) => (
+          {menuItems.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="select-all-menu"
+                  checked={
+                    selectedCount === menuItems.length
+                      ? true
+                      : selectedCount > 0
+                        ? 'indeterminate'
+                        : false
+                  }
+                  onCheckedChange={(checked) => toggleSelectAll(checked === true)}
+                />
+                <Label htmlFor="select-all-menu" className="cursor-pointer text-sm font-medium">
+                  {selectedCount > 0
+                    ? `${selectedCount} selected`
+                    : `Select all (${menuItems.length})`}
+                </Label>
+              </div>
+              {selectedCount > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsBulkPhotoDialogOpen(true)}
+                  >
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                    Upload photos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleting}
+                  >
+                    {bulkDeleting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
+                    Delete selected
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
+                    Clear
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <MenuBulkPhotoDialog
+            open={isBulkPhotoDialogOpen}
+            onOpenChange={setIsBulkPhotoDialogOpen}
+            items={selectedItems}
+            onComplete={handleBulkPhotosComplete}
+          />
+
+          {Object.entries(groupedItems).map(([category, items]) => {
+            const categorySelectedCount = items.filter((item) => selectedIds.has(item.id)).length
+            const allCategorySelected =
+              items.length > 0 && categorySelectedCount === items.length
+
+            return (
             <Card key={category}>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle>{category}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`select-category-${category}`}
+                    checked={allCategorySelected}
+                    onCheckedChange={(checked) =>
+                      toggleCategorySelection(items, checked === true)
+                    }
+                  />
+                  <Label
+                    htmlFor={`select-category-${category}`}
+                    className="cursor-pointer text-xs text-muted-foreground"
+                  >
+                    Select category
+                  </Label>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {items.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
+                      className={`flex items-center justify-between p-4 border rounded-lg gap-3 ${
+                        selectedIds.has(item.id) ? 'border-primary/50 bg-primary/5' : ''
+                      }`}
                     >
-                      <div className="flex-1">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <Checkbox
+                          checked={selectedIds.has(item.id)}
+                          onCheckedChange={(checked) =>
+                            toggleItemSelection(item.id, checked === true)
+                          }
+                          className="mt-1"
+                        />
+                        {item.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.image_url}
+                            alt={item.name}
+                            className="h-14 w-14 shrink-0 rounded-md object-cover border"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
+                            <ImageIcon className="h-5 w-5" />
+                          </div>
+                        )}
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <h4 className="font-semibold">{item.name}</h4>
                           {item.is_veg && (
@@ -955,7 +1138,8 @@ export default function MenuPage() {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
                         <Switch
                           checked={item.is_available}
                           onCheckedChange={() =>
@@ -982,7 +1166,8 @@ export default function MenuPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            )
+          })}
         </div>
       ) : null}
     </div>

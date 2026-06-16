@@ -103,3 +103,58 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSession()
+    if (!session.isAuthenticated || !session.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    if (!isMenuUploadEnabled(session.storeCategory)) {
+      return NextResponse.json(
+        { error: 'Menu management is only available for Restaurants, Cafes, and Bakeries.' },
+        { status: 403 },
+      )
+    }
+
+    const body = await request.json().catch(() => null)
+    const ids = body?.ids
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'Select at least one item to delete.' }, { status: 400 })
+    }
+
+    const validIds = ids.filter((id: unknown) => typeof id === 'string' && id.length > 0)
+    if (!validIds.length) {
+      return NextResponse.json({ error: 'Invalid item ids.' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseServiceDbClient()
+    if (!supabase) {
+      return NextResponse.json(
+        { error: 'Menu management is not configured on the server.' },
+        { status: 500 },
+      )
+    }
+
+    const { error } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('vendor_id', session.id)
+      .in('id', validIds)
+
+    if (error) {
+      console.error('[Menu Bulk Delete] Error:', error)
+      return NextResponse.json({ error: 'Failed to delete selected items.' }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      deleted: validIds.length,
+      message: `Deleted ${validIds.length} item(s).`,
+    })
+  } catch (error) {
+    console.error('[Menu Bulk Delete] Unexpected error:', error)
+    return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 })
+  }
+}
