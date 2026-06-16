@@ -38,6 +38,7 @@ create policy "menu_items_service_role_all"
   with check (true);
 
 -- Optional staging bucket for legacy PDF uploads (app now posts PDFs directly to the API)
+-- Menu item photos are stored in the vendor-images bucket: menu_item_images/{vendor_id}/{item_id}.{ext}
 insert into storage.buckets (id, name, public)
 values ('vendor-menu-pdfs', 'vendor-menu-pdfs', false)
 on conflict (id) do nothing;

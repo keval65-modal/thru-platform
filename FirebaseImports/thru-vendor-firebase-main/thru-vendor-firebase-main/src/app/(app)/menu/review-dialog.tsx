@@ -87,7 +87,7 @@ export function ReviewDialog({ open, onOpenChange, items: initialItems, onSave }
                     />
                   </div>
                   <div className="col-span-2 space-y-2">
-                    <Label>Price</Label>
+                    <Label>Price (₹)</Label>
                     <Input
                       type="number"
                       value={item.price}

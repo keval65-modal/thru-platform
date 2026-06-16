@@ -32,6 +32,7 @@ import {
   fileToDataUri,
 } from '@/lib/menu-image'
 import Link from 'next/link'
+import { MenuItemImageUpload } from '@/components/menu/MenuItemImageUpload'
 
 // Fallback vendor ID for local testing (real session ID overrides this)
 const VENDOR_ID = '8c027b0f-394c-4c3e-a20c-56ad675366d2'
@@ -595,7 +596,7 @@ export default function MenuPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="price">Price (â‚¹) *</Label>
+                  <Label htmlFor="price">Price (₹) *</Label>
                   <Input
                     id="price"
                     type="number"
@@ -625,16 +626,12 @@ export default function MenuPage() {
                   </Select>
                 </div>
 
-                <div>
-                  <Label htmlFor="image_url">Image URL</Label>
-                  <Input
-                    id="image_url"
-                    type="url"
-                    value={formData.image_url}
-                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                    placeholder="https://example.com/image.jpg"
-                  />
-                </div>
+                <MenuItemImageUpload
+                  key={editingItem?.id ?? 'new'}
+                  value={formData.image_url}
+                  onChange={(url) => setFormData({ ...formData, image_url: url })}
+                  itemId={editingItem?.id}
+                />
 
                 <div>
                   <Label htmlFor="preparation_time">Preparation Time (minutes)</Label>
@@ -951,7 +948,7 @@ export default function MenuPage() {
                             {item.description}
                           </p>
                         )}
-                        <p className="text-lg font-bold mt-2">â‚¹{item.price}</p>
+                        <p className="text-lg font-bold mt-2">₹{item.price}</p>
                         {item.preparation_time && (
                           <p className="text-xs text-muted-foreground">
                             {item.preparation_time} mins

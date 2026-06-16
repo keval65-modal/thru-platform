@@ -517,3 +517,53 @@ export async function uploadVendorImage(
   }
 }
 
+/** Path prefix: menu_item_images/{vendor_id}/{item_id}.{ext} */
+export async function uploadMenuItemImage(
+  vendorId: string,
+  imageFile: File,
+  itemId?: string,
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  const supabase = getSupabaseServiceDbClient() ?? getSupabaseDbClient();
+  if (!getSupabaseServiceDbClient()) {
+    console.warn('[uploadMenuItemImage] SUPABASE_SERVICE_ROLE_KEY missing — upload may fail RLS checks');
+  }
+
+  try {
+    const fileExt = (imageFile.name.split('.').pop() || 'jpg').toLowerCase();
+    const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(fileExt) ? fileExt : 'jpg';
+    const fileId = itemId || crypto.randomUUID();
+    const filePath = `menu_item_images/${vendorId}/${fileId}.${safeExt}`;
+
+    const arrayBuffer = await imageFile.arrayBuffer();
+    const buffer = new Uint8Array(arrayBuffer);
+
+    const { error } = await supabase.storage
+      .from(VENDOR_IMAGES_BUCKET)
+      .upload(filePath, buffer, {
+        contentType: imageFile.type || 'image/jpeg',
+        upsert: true,
+      });
+
+    if (error) {
+      const lower = error.message?.toLowerCase() ?? '';
+      let hint = '';
+      if (lower.includes('bucket') || lower.includes('not found')) {
+        hint = ` Run src/lib/supabase/vendor-images-schema.sql in the Supabase SQL editor (bucket "${VENDOR_IMAGES_BUCKET}").`;
+      } else if (lower.includes('row-level security') || lower.includes('policy')) {
+        hint = ' Ensure SUPABASE_SERVICE_ROLE_KEY is set on the server.';
+      }
+      console.error('❌ Error uploading menu item image:', error.message, { vendorId, filePath });
+      return { success: false, error: error.message + hint };
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(VENDOR_IMAGES_BUCKET)
+      .getPublicUrl(filePath);
+
+    return { success: true, url: publicUrl };
+  } catch (error: any) {
+    console.error('❌ Unexpected error uploading menu item image:', error);
+    return { success: false, error: error.message };
+  }
+}
+
