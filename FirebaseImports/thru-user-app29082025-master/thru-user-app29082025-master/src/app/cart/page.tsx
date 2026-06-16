@@ -12,18 +12,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ChevronLeft,
   MapPin,
   ShoppingCart,
   Loader2,
   Minus,
   Plus,
-  X,
-  Check
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { consumerOrderService } from "@/lib/consumer-order-service";
 import { PlacedOrder, VendorOrderPortion } from "@/lib/orderModels";
 import { PreciseLocationRequiredModal } from "@/components/location/PreciseLocationRequiredModal";
@@ -62,13 +56,20 @@ function CartPageContent() {
   const [cartVendorGroups, setCartVendorGroups] = React.useState<CartVendorGroup[]>([]);
   const [overallSubtotal, setOverallSubtotal] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isPaymentOpen, setIsPaymentOpen] = React.useState(false);
-  const [paymentMethod, setPaymentMethod] = React.useState("gpay");
   const [isPlacingOrder, setIsPlacingOrder] = React.useState(false);
   const [startLocation, setStartLocation] = React.useState<string | null>(null);
   const [destination, setDestination] = React.useState<string | null>(null);
   const [preciseGateModalOpen, setPreciseGateModalOpen] = React.useState(false);
   const [preciseGateBusy, setPreciseGateBusy] = React.useState(false);
+
+  // Legacy food-cart flow — use order review checkout instead
+  React.useEffect(() => {
+    if (searchParams.get('finalItemsForCart')) return;
+    const savedCart = localStorage.getItem('food_cart');
+    if (savedCart) {
+      router.replace('/order/review');
+    }
+  }, [router, searchParams]);
 
   // Load cart data
   React.useEffect(() => {
@@ -217,15 +218,16 @@ function CartPageContent() {
   };
 
   const handlePlaceOrder = async () => {
-    let leavePaymentDialogOpen = false;
     setIsPlacingOrder(true);
     try {
       const precise = await getPrecisePositionForRouteTracking();
       if (!precise.ok) {
         setPreciseGateModalOpen(true);
-        leavePaymentDialogOpen = true;
         return;
       }
+
+      // Staged payment
+      await new Promise((resolve) => setTimeout(resolve, 1200));
 
       const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
       
@@ -340,9 +342,6 @@ function CartPageContent() {
       });
     } finally {
       setIsPlacingOrder(false);
-      if (!leavePaymentDialogOpen) {
-        setIsPaymentOpen(false);
-      }
     }
   };
 
@@ -463,74 +462,14 @@ function CartPageContent() {
             </div>
             <Button 
               className="bg-transparent hover:bg-white/10 text-white border-none text-lg font-medium h-auto p-0"
-              onClick={() => setIsPaymentOpen(true)}
+              onClick={() => void handlePlaceOrder()}
+              disabled={isPlacingOrder}
             >
-              Place Order
+              {isPlacingOrder ? 'Processing…' : 'Place Order'}
             </Button>
           </div>
         </div>
       )}
-
-      {/* Payment Modal */}
-      <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
-        <DialogContent className="sm:max-w-md p-6 gap-6 bg-white rounded-t-3xl sm:rounded-xl !max-w-none sm:!max-w-md fixed bottom-0 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 left-0 sm:left-1/2 sm:-translate-x-1/2 w-full mb-0 pb-8">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-bold">Pay ₹{overallSubtotal}</h3>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-gray-100 hover:bg-gray-200" onClick={() => setIsPaymentOpen(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-3">
-              <div className={cn(
-                "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
-                paymentMethod === "gpay" ? "border-black bg-gray-50" : "border-gray-100"
-              )} onClick={() => setPaymentMethod("gpay")}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white border rounded-full flex items-center justify-center shadow-sm">
-                    <span className="font-bold text-blue-500 text-lg">G</span>
-                  </div>
-                  <span className="font-semibold">GPay UPI</span>
-                </div>
-                <div className={cn("w-5 h-5 rounded-full border flex items-center justify-center", paymentMethod === "gpay" ? "bg-black border-black" : "border-gray-300")}>
-                    {paymentMethod === "gpay" && <Check className="h-3 w-3 text-white" />}
-                </div>
-                <RadioGroupItem value="gpay" id="gpay" className="sr-only" />
-              </div>
-
-              <div className={cn(
-                "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
-                paymentMethod === "phonepe" ? "border-black bg-gray-50" : "border-gray-100"
-              )} onClick={() => setPaymentMethod("phonepe")}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#5f259f] rounded-full flex items-center justify-center text-white font-bold shadow-sm">
-                    Pe
-                  </div>
-                  <span className="font-semibold">PhonePe UPI</span>
-                </div>
-                <div className={cn("w-5 h-5 rounded-full border flex items-center justify-center", paymentMethod === "phonepe" ? "bg-black border-black" : "border-gray-300")}>
-                    {paymentMethod === "phonepe" && <Check className="h-3 w-3 text-white" />}
-                </div>
-                <RadioGroupItem value="phonepe" id="phonepe" className="sr-only" />
-              </div>
-            </RadioGroup>
-
-            <Button 
-              className="w-full bg-[#F06A5D] hover:bg-[#d65a4e] text-white py-6 text-lg rounded-xl shadow-lg mt-4"
-              onClick={handlePlaceOrder}
-              disabled={isPlacingOrder}
-            >
-              {isPlacingOrder ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                "Proceed to Pay"
-              )}
-            </Button>
-        </DialogContent>
-      </Dialog>
 
       <PreciseLocationRequiredModal
         open={preciseGateModalOpen}

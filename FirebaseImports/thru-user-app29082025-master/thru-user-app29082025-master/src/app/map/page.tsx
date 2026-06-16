@@ -1,17 +1,24 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import Script from 'next/script';
-import { Loader2, MapIcon } from 'lucide-react';
+import { Loader2, MapIcon, Navigation, X } from 'lucide-react';
 import { ShopMap } from '@/components/map/ShopMap';
+import { TripRouteMap } from '@/components/map/TripRouteMap';
 import { ShopMarkerData, ShopCategory } from '@/types/map-types';
 import { getAllShopsForMap, subscribeToShopUpdates } from '@/lib/map-service';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import BottomNav from '@/components/layout/bottom-nav';
 import { useToast } from '@/hooks/use-toast';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { distanceKm } from '@/lib/geo-utils';
+import {
+  clearActiveTripRoute,
+  loadActiveTripRoute,
+  type ActiveTripRoute,
+} from '@/lib/active-trip-route';
 
 // Category filter configuration
 const CATEGORY_FILTERS = [
@@ -61,13 +68,19 @@ export default function MapPage() {
   const [vicinityKm, setVicinityKm] = useState(5); // default 5km vicinity
   const [isLoadingShops, setIsLoadingShops] = useState(true);
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
-  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+  const [activeTrip, setActiveTrip] = useState<ActiveTripRoute | null>(null);
+  const [showTripRoute, setShowTripRoute] = useState(true);
 
   const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   // Load shops on mount
   useEffect(() => {
     loadShops();
+    const trip = loadActiveTripRoute();
+    if (trip) {
+      setActiveTrip(trip);
+      setShowTripRoute(true);
+    }
   }, []);
 
   // If navigating client-side, the script may already be loaded and `onLoad` won't fire.
@@ -108,22 +121,25 @@ export default function MapPage() {
   // Get user's current location
   useEffect(() => {
     if (navigator.geolocation) {
-      setIsFetchingLocation(true);
       navigator.geolocation.getCurrentPosition(
         (position) => {
           setUserLocation({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude
           });
-          setIsFetchingLocation(false);
         },
         (error) => {
           console.error('Error getting location:', error);
-          setIsFetchingLocation(false);
         }
       );
     }
   }, []);
+
+  const dismissTripRoute = () => {
+    clearActiveTripRoute();
+    setActiveTrip(null);
+    setShowTripRoute(false);
+  };
 
   const loadShops = async () => {
     setIsLoadingShops(true);
@@ -183,10 +199,50 @@ export default function MapPage() {
         {/* Header */}
         <div className="bg-white border-b shadow-sm z-10">
           <div className="px-4 py-3">
-            <div className="flex items-center gap-2 mb-3">
-              <MapIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold">Nearby Shops</h1>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <MapIcon className="h-6 w-6 text-primary shrink-0" />
+                <h1 className="text-xl font-bold truncate">
+                  {activeTrip && showTripRoute ? 'Your trip route' : 'Nearby Shops'}
+                </h1>
+              </div>
+              {activeTrip && (
+                <div className="flex items-center gap-1 shrink-0">
+                  {!showTripRoute && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => setShowTripRoute(true)}
+                    >
+                      <Navigation className="h-3.5 w-3.5 mr-1" />
+                      Route
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={dismissTripRoute}
+                    aria-label="Dismiss trip route"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
+
+            {activeTrip && showTripRoute && (
+              <div className="mb-3 rounded-lg bg-primary/5 border border-primary/15 px-3 py-2 text-sm">
+                <p className="font-medium text-foreground">
+                  {activeTrip.pickupStops.length} pickup stop
+                  {activeTrip.pickupStops.length === 1 ? '' : 's'} · optimized route
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                  {activeTrip.pickupStops.map((s) => s.name).join(' → ')} → destination
+                </p>
+              </div>
+            )}
 
             {/* Category filters */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -233,6 +289,14 @@ export default function MapPage() {
                 <p className="text-sm text-muted-foreground">Loading map...</p>
               </div>
             </div>
+          ) : activeTrip && showTripRoute ? (
+            <TripRouteMap
+              startLocation={activeTrip.startLocation}
+              destination={activeTrip.destination}
+              pickupStops={activeTrip.pickupStops}
+              mapsReady={isGoogleMapsLoaded}
+              className="w-full h-full"
+            />
           ) : (
             <>
               <ShopMap

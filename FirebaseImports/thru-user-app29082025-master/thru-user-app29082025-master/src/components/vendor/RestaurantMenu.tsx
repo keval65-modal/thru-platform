@@ -111,7 +111,7 @@ export default function RestaurantMenu({ vendor, routeData }: RestaurantMenuProp
     sessionStorage.setItem('orderRouteData', JSON.stringify(routeData));
     
     // Navigate to cart page
-    router.push('/cart');
+    router.push('/order/review');
   }
 
   if (loading) {

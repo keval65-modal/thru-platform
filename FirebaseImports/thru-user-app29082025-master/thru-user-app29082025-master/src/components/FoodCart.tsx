@@ -30,7 +30,7 @@ export function FoodCart({ onClose }: FoodCartProps) {
   const handleViewCart = () => {
     // Navigate to the cart page
     // We don't need to pass params as CartPage will read from localStorage
-    router.push('/cart')
+    router.push('/order/review')
     onClose?.()
   }
 

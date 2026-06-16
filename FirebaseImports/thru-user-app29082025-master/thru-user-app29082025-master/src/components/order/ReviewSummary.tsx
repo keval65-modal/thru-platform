@@ -1,17 +1,19 @@
 'use client';
 
 import * as React from 'react';
-import { useOrderFlow } from '@/contexts/OrderFlowContext';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { useOrderFlow } from '@/contexts/OrderFlowContext';
+import { saveActiveTripRoute } from '@/lib/active-trip-route';
+import { placeOrderFromFlow } from '@/lib/place-order-from-flow';
 import { computeCartSummary, formatCartInr, getPickupStores } from '@/lib/order-cart-pricing';
 
 export function ReviewSummary() {
   const flow = useOrderFlow();
   const router = useRouter();
   const { toast } = useToast();
-  const [placing, setPlacing] = React.useState(false);
+  const [processing, setProcessing] = React.useState(false);
 
   const summary = React.useMemo(() => computeCartSummary(flow), [flow]);
   const pickupStores = React.useMemo(() => getPickupStores(flow), [flow]);
@@ -23,26 +25,50 @@ export function ReviewSummary() {
     !flow.categories.includes('grocery') &&
     !flow.categories.includes('food');
 
+  const startLocation =
+    flow.startLocationQuery || flow.selectedStartLocation || '';
+  const destination =
+    flow.destinationQuery || flow.selectedDestination || '';
+
   const handleCheckout = async () => {
-    setPlacing(true);
+    setProcessing(true);
     try {
-      sessionStorage.setItem(
-        'thru-checkout-summary',
-        JSON.stringify({
-          pickupStores,
-          groceryItems: flow.groceryItems,
-          foodItems: flow.foodItems,
-          medicineItems: flow.medicineItems,
-          destination: flow.destinationQuery,
-          departureTime: flow.departureTime,
-          estimatedTotal: summary.total,
-        })
-      );
-      router.push('/cart');
-    } catch {
-      toast({ variant: 'destructive', title: 'Could not continue', description: 'Please try again.' });
+      // Staged payment — simulate gateway delay then place order
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+
+      const result = await placeOrderFromFlow(flow);
+      if (!result.success || !result.orderId) {
+        throw new Error(result.error || 'Could not place order');
+      }
+
+      saveActiveTripRoute({
+        orderId: result.orderId,
+        startLocation,
+        destination,
+        pickupStops: pickupStores.map((store) => ({
+          id: `${store.category}-${store.vendorId}`,
+          name: store.vendorName,
+          address: store.address,
+          category: store.category,
+          vendorId: store.vendorId,
+        })),
+        createdAt: new Date().toISOString(),
+      });
+
+      toast({
+        title: 'Payment successful',
+        description: `Order #${result.orderId} sent to vendors.`,
+      });
+
+      router.push(`/order-tracking/${result.orderId}`);
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Checkout failed',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
     } finally {
-      setPlacing(false);
+      setProcessing(false);
     }
   };
 
@@ -81,8 +107,12 @@ export function ReviewSummary() {
 
       <div className="rounded-xl bg-background border border-border/50 p-4 space-y-2 text-sm">
         <p>
+          <span className="text-muted-foreground">From:</span>{' '}
+          <span className="font-medium">{startLocation || '—'}</span>
+        </p>
+        <p>
           <span className="text-muted-foreground">To:</span>{' '}
-          <span className="font-medium">{flow.destinationQuery || '—'}</span>
+          <span className="font-medium">{destination || '—'}</span>
         </p>
         <p>
           <span className="text-muted-foreground">Needs:</span>{' '}
@@ -108,10 +138,10 @@ export function ReviewSummary() {
       <Button
         type="button"
         className="w-full h-12 rounded-xl text-base font-semibold"
-        onClick={handleCheckout}
-        disabled={placing}
+        onClick={() => void handleCheckout()}
+        disabled={processing || (!hasItems && pickupStores.length === 0)}
       >
-        {placing ? 'Preparing checkout…' : 'Continue to checkout'}
+        {processing ? 'Processing payment…' : 'Continue to checkout'}
       </Button>
     </div>
   );

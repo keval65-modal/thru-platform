@@ -610,7 +610,7 @@ export default function OrderTrackingPage() {
                         <Button 
                             variant="link" 
                             className="w-full text-[#F06A5D] font-bold underline decoration-[#F06A5D]/30"
-                            onClick={() => router.push('/cart')} // Retry payment flow
+                            onClick={() => router.push('/order/review')}
                         >
                             Complete Payment
                         </Button>
