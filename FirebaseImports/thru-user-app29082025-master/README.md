@@ -2,6 +2,25 @@
 
 A Next.js application for user management and authentication.
 
+## Deployment Root
+
+This folder is the Vercel project root:
+
+```text
+FirebaseImports/thru-user-app29082025-master
+```
+
+Vercel should use this directory as **Root Directory**. The previous nested path
+`FirebaseImports/thru-user-app29082025-master/thru-user-app29082025-master` has
+been flattened and should not be used for new deployments.
+
+Build settings:
+
+```bash
+npm install
+npm run build
+```
+
 ## 🚀 **reCAPTCHA Bypass Implementation**
 
 **We've successfully bypassed reCAPTCHA completely!** Phone verification now works without any reCAPTCHA dependencies.

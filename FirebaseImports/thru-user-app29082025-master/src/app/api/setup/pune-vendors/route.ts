@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { vendorManagementService } from '@/lib/vendor-management-service';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 // POST /api/setup/pune-vendors - Create 5 dummy vendors in Pune
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
+    const { vendorManagementService } = await import('@/lib/vendor-management-service');
     console.log('🏪 Creating Pune vendors...');
     
     const puneVendors = [
@@ -220,8 +222,9 @@ export async function POST(request: NextRequest) {
 }
 
 // GET /api/setup/pune-vendors - Get created vendors
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
+    const { vendorManagementService } = await import('@/lib/vendor-management-service');
     // Get vendors near Pune
     const vendors = await vendorManagementService.findNearbyVendors(
       { lat: 18.5204, lng: 73.8567 }, // Pune center

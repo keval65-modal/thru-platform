@@ -1,6 +1,4 @@
-import { getApps, cert, initializeApp, App } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import type { App } from 'firebase-admin/app';
 
 let adminApp: App | null = null;
 
@@ -16,8 +14,8 @@ export function getAdminApp(): App | null {
     return null;
   }
 
-  // Skip Firebase Admin initialization during build
-  if (process.env.NODE_ENV === 'production' && !projectId) {
+  // Skip Firebase Admin initialization during static build analysis.
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
     console.warn('Skipping Firebase Admin initialization during build');
     return null;
   }
@@ -31,7 +29,10 @@ export function getAdminApp(): App | null {
     privateKey = privateKey.slice(1, -1);
   }
 
-  adminApp = initializeApp({
+  const { cert, getApps, initializeApp } =
+    require('firebase-admin/app') as typeof import('firebase-admin/app');
+
+  adminApp = getApps()[0] ?? initializeApp({
     credential: cert({
       projectId,
       clientEmail,
@@ -43,12 +44,17 @@ export function getAdminApp(): App | null {
 
 export const adminAuth = () => {
   const app = getAdminApp();
-  return app ? getAuth(app) : null;
+  if (!app) return null;
+  const { getAuth } = require('firebase-admin/auth') as typeof import('firebase-admin/auth');
+  return getAuth(app);
 };
 
 export const adminDb = () => {
   const app = getAdminApp();
-  return app ? getFirestore(app) : null;
+  if (!app) return null;
+  const { getFirestore } =
+    require('firebase-admin/firestore') as typeof import('firebase-admin/firestore');
+  return getFirestore(app);
 };
 
 
