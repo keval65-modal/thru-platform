@@ -124,9 +124,9 @@ export async function extractMenuData(input: ExtractMenuInput): Promise<ExtractM
 
   let parsed: unknown
   try {
-    parsed = JSON.parse(outputText)
+    parsed = parseModelJson(outputText)
   } catch (error) {
-    console.error('[extractMenuData] Failed parsing OpenAI output:', outputText)
+    console.error('[extractMenuData] Failed parsing model output:', outputText)
     throw new Error('Menu extraction model returned invalid JSON.')
   }
 
@@ -155,7 +155,7 @@ export async function extractMenuFromImagePage(
 
   let parsed: unknown
   try {
-    parsed = JSON.parse(outputText)
+    parsed = parseModelJson(outputText)
   } catch (error) {
     console.error('[extractMenuFromImagePage] Failed parsing model output:', outputText)
     throw new Error('Menu image extraction model returned invalid JSON.')
@@ -223,33 +223,42 @@ Return only JSON following the specified schema.`,
   return outputText
 }
 
+function parseModelJson(outputText: string): unknown {
+  const trimmed = outputText.trim()
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  const jsonText = fenced ? fenced[1].trim() : trimmed
+  return JSON.parse(jsonText)
+}
+
 async function extractViaGeminiPdf(vendorId: string, menuDataUri: string): Promise<string> {
   const apiKey = process.env.GOOGLE_AI_API_KEY
   if (!apiKey) {
     throw new Error('GOOGLE_AI_API_KEY is not configured. Unable to run PDF vision extraction.')
   }
 
-  const { mimeType, base64 } = parseDataUri(menuDataUri)
-  if (!base64) throw new Error('Invalid menuDataUri: missing base64 payload.')
+  const { mimeType } = parseDataUri(menuDataUri)
+  if (!menuDataUri.startsWith('data:')) {
+    throw new Error('Invalid menuDataUri: expected a data URI.')
+  }
 
   const result = await ai.generate({
     model: menuExtractionModel,
     prompt: [
+      {
+        media: {
+          contentType: mimeType,
+          url: menuDataUri,
+        },
+      },
       { text: SYSTEM_PROMPT },
       {
         text: `Vendor ID: ${vendorId}.
 The attached PDF is a restaurant menu. Extract every orderable item and return ONLY JSON following the schema (no markdown, no commentary).`,
       },
       {
-        inlineData: {
-          mimeType,
-          data: base64,
-        },
-      } as any,
-      {
         text: `JSON schema (for reference, respond with JSON only):\n${JSON.stringify(RESPONSE_JSON_SCHEMA)}`,
       },
-    ] as any,
+    ],
   })
 
   const text = (result as any)?.text?.trim?.() || (result as any)?.output?.[0]?.content?.[0]?.text?.trim?.()
@@ -267,27 +276,27 @@ async function extractViaGeminiImage(
     throw new Error('GOOGLE_AI_API_KEY is not configured. Unable to run image vision extraction.')
   }
 
-  const { mimeType, base64 } = parseDataUri(menuImageDataUri)
+  const { mimeType } = parseDataUri(menuImageDataUri)
   const pageLabel = pageNumber ? `Page ${pageNumber}` : 'This page'
 
   const result = await ai.generate({
     model: menuExtractionModel,
     prompt: [
+      {
+        media: {
+          contentType: mimeType,
+          url: menuImageDataUri,
+        },
+      },
       { text: IMAGE_READABILITY_PROMPT },
       {
         text: `Vendor ID: ${vendorId}. ${pageLabel} of a photographed menu.
 Assess readability first, then extract items only if readable. Return ONLY JSON.`,
       },
       {
-        inlineData: {
-          mimeType,
-          data: base64,
-        },
-      } as any,
-      {
         text: `JSON schema (respond with JSON only):\n${JSON.stringify(IMAGE_PAGE_RESPONSE_JSON_SCHEMA)}`,
       },
-    ] as any,
+    ],
   })
 
   const text = (result as any)?.text?.trim?.() || (result as any)?.output?.[0]?.content?.[0]?.text?.trim?.()

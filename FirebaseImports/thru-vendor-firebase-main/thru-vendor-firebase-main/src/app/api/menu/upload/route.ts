@@ -65,7 +65,13 @@ async function readPdfFromRequest(request: Request): Promise<
     }
 
     const mimeType = file.type || 'application/pdf'
-    if (mimeType && !SUPPORTED_CONTENT_TYPES.has(mimeType)) {
+    const fileName = file.name || 'menu.pdf'
+    const looksLikePdf =
+      mimeType === 'application/pdf' ||
+      mimeType === 'application/octet-stream' ||
+      fileName.toLowerCase().endsWith('.pdf')
+
+    if (!looksLikePdf) {
       return {
         ok: false,
         response: NextResponse.json(
@@ -204,11 +210,16 @@ export async function POST(request: Request) {
     })
 
     const extraction = await (async () => {
+      const menuDataUri = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`
+
       if (menuText && menuText.trim().length >= 50) {
-        return await extractMenuData({ menuText, vendorId: session.id })
+        try {
+          return await extractMenuData({ menuText, vendorId: session.id })
+        } catch (textError) {
+          console.warn('[Menu Upload] Text-based extraction failed, falling back to PDF vision:', textError)
+        }
       }
 
-      const menuDataUri = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`
       return await extractMenuData({ menuDataUri, vendorId: session.id })
     })()
 
@@ -269,8 +280,14 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('[Menu Upload] Unexpected error:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Unable to process this menu right now. Please try again shortly.' },
+      {
+        error:
+          message.length > 0 && message.length <= 240
+            ? message
+            : 'Unable to process this menu right now. Please try again shortly.',
+      },
       { status: 500 },
     )
   }
