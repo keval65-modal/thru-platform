@@ -1,15 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
-import { CategoryRouteShops } from '@/components/order/CategoryRouteShops';
+import { CategoryRouteShops, type BrowseShopInfo } from '@/components/order/CategoryRouteShops';
+import { VendorMenuModal } from '@/components/order/VendorMenuModal';
 import { formatCartInr } from '@/lib/order-cart-pricing';
 import { Button } from '@/components/ui/button';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 
 export function FoodDiscovery() {
-  const router = useRouter();
   const {
     foodItems,
     updateFoodItem,
@@ -19,9 +18,17 @@ export function FoodDiscovery() {
     syncFoodCartFromStorage,
   } = useOrderFlow();
 
+  const [menuShop, setMenuShop] = React.useState<BrowseShopInfo | null>(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
   React.useEffect(() => {
     syncFoodCartFromStorage();
   }, [syncFoodCartFromStorage]);
+
+  const openMenu = (shop: BrowseShopInfo) => {
+    setMenuShop(shop);
+    setMenuOpen(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -35,7 +42,9 @@ export function FoodDiscovery() {
             <div key={item.id} className="py-3 flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="font-medium truncate">{item.name}</p>
-                <p className="text-sm text-muted-foreground">{formatCartInr(item.unitPrice * item.quantity)}</p>
+                <p className="text-sm text-muted-foreground">
+                  {formatCartInr(item.unitPrice * item.quantity)}
+                </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <div className="flex items-center rounded-full border border-border/90 bg-muted/30 p-0.5">
@@ -89,8 +98,10 @@ export function FoodDiscovery() {
         category="food"
         selectedVendor={selectedFoodVendor}
         onSelectVendor={setSelectedFoodVendor}
-        onBrowseShop={(id) => router.push(`/vendor/${id}`)}
+        onBrowseShop={openMenu}
       />
+
+      <VendorMenuModal shop={menuShop} open={menuOpen} onOpenChange={setMenuOpen} />
     </div>
   );
 }

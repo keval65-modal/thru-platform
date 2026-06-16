@@ -38,12 +38,17 @@ function parseEndpoints(start: string | null, dest: string | null) {
   return { start: s, end: d };
 }
 
+export type BrowseShopInfo = {
+  id: string;
+  name: string;
+  address?: string;
+};
+
 type Props = {
   category: OrderCategory;
   selectedVendor: PickupStore | null;
   onSelectVendor: (vendor: PickupStore | null) => void;
-  /** Optional link when user taps a shop (e.g. browse food menu) */
-  onBrowseShop?: (vendorId: string) => void;
+  onBrowseShop?: (shop: BrowseShopInfo) => void;
 };
 
 export function CategoryRouteShops({
@@ -195,7 +200,14 @@ export function CategoryRouteShops({
                     <button
                       type="button"
                       className="text-xs font-medium text-primary hover:underline"
-                      onClick={() => onBrowseShop(shop.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBrowseShop({
+                          id: shop.id,
+                          name: shop.name,
+                          address: shop.address,
+                        });
+                      }}
                     >
                       Browse menu →
                     </button>
