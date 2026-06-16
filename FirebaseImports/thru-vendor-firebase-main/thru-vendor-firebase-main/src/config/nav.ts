@@ -13,6 +13,11 @@ export interface NavItem {
 
 export const mainNavItems: NavItem[] = [
   {
+    title: 'Orders',
+    href: '/orders',
+    icon: ShoppingCart,
+  },
+  {
     title: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
@@ -21,11 +26,6 @@ export const mainNavItems: NavItem[] = [
     title: 'Onboarding',
     href: '/onboarding',
     icon: ClipboardCheck,
-  },
-  {
-    title: 'Orders',
-    href: '/orders', 
-    icon: ShoppingCart, 
   },
   {
     title: 'Financial Report',

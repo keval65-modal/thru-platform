@@ -257,5 +257,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ success: true, redirect: '/dashboard' });
+  return NextResponse.json({ success: true, redirect: '/orders' });
 }

@@ -29,7 +29,7 @@ export default async function MerchantAgreementPage() {
     .maybeSingle();
 
   if (existing) {
-    redirect('/dashboard');
+    redirect('/orders');
   }
 
   return (

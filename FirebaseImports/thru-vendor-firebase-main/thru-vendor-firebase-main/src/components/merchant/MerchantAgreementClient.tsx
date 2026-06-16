@@ -124,7 +124,7 @@ export function MerchantAgreementClient({
         return;
       }
       toast({ title: 'Onboarding complete', description: 'Your signed agreement has been saved.' });
-      router.push(typeof data.redirect === 'string' ? data.redirect : '/dashboard');
+      router.push(typeof data.redirect === 'string' ? data.redirect : '/orders');
     } catch (e: any) {
       toast({
         variant: 'destructive',

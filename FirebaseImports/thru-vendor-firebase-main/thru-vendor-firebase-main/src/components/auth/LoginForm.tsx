@@ -116,7 +116,7 @@ export function LoginForm() {
           title: 'Login Successful',
           description: 'Redirecting to your orders...',
         });
-        router.push('/dashboard');
+        router.push('/orders');
         router.refresh();
       }
     }
@@ -207,7 +207,7 @@ export function LoginForm() {
           toast({ title: "Login Successful", description: "Redirecting to your orders..." });
           // Small delay to show success message
           setTimeout(() => {
-            router.push('/dashboard');
+            router.push('/orders');
             router.refresh();
           }, 500);
         } else {
