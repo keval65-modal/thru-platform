@@ -1,4 +1,4 @@
-import type { GroceryListItem, RouteOption } from '@/types/order-flow';
+import type { GroceryListItem, OrderCategory, RouteOption } from '@/types/order-flow';
 import type { RouteBasedShop } from '@/lib/route-based-shop-discovery';
 import type { RouteShopSearchTier } from '@/lib/route-shop-search';
 
@@ -48,9 +48,15 @@ export function streetFromAddress(address: string | undefined): string {
 export function buildRouteOptions(
   shops: RouteBasedShop[],
   groceryItems: GroceryListItem[],
-  searchTier: RouteShopSearchTier = 'on_route'
+  _searchTier: RouteShopSearchTier = 'on_route',
+  categories: OrderCategory[] = ['grocery']
 ): RouteOption[] {
   if (shops.length === 0) return [];
+
+  const medicineOnly =
+    categories.includes('medicine') &&
+    !categories.includes('grocery') &&
+    !categories.includes('food');
 
   const sorted = [...shops].sort((a, b) => {
     if (a.isOnRoute !== b.isOnRoute) return a.isOnRoute ? -1 : 1;
@@ -81,7 +87,7 @@ export function buildRouteOptions(
       isOnRoute: onPath,
       isOnPath: onPath,
       timingLabel,
-      totalPrice: basePrice,
+      totalPrice: medicineOnly ? 0 : basePrice,
       savings,
       addedMinutes,
       description: streetName || shop.address,

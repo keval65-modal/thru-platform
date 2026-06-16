@@ -54,25 +54,19 @@ const CATEGORY_LABELS: Record<OrderCategory, string> = {
 export function getPickupStores(state: OrderFlowState): PickupStore[] {
   const stores: PickupStore[] = [];
 
-    if (state.categories.includes('grocery') && state.groceryItems.length > 0) {
-    const option =
-      state.routeOptions.find((o) => o.id === state.selectedRouteOptionId) ??
-      state.routeOptions[0];
-    if (option?.shopIds?.[0] && option.shopNames?.[0]) {
-      stores.push({
-        category: 'grocery',
-        vendorId: option.shopIds[0],
-        vendorName: option.shopNames[0],
-        address: option.shopAddress || option.streetName || undefined,
-      });
-    }
+  if (state.categories.includes('grocery') && state.groceryItems.length > 0 && state.selectedGroceryVendor) {
+    stores.push(state.selectedGroceryVendor);
   }
 
-  if (state.categories.includes('food') && state.selectedFoodVendor) {
+  if (state.categories.includes('food') && state.foodItems.length > 0 && state.selectedFoodVendor) {
     stores.push(state.selectedFoodVendor);
   }
 
-  if (state.categories.includes('medicine') && state.selectedMedicineVendor) {
+  if (
+    state.categories.includes('medicine') &&
+    state.medicineItems.length > 0 &&
+    state.selectedMedicineVendor
+  ) {
     stores.push(state.selectedMedicineVendor);
   }
 
@@ -135,10 +129,15 @@ export function computeCartSummary(state: OrderFlowState): CartSummary {
     });
   }
 
-  const option =
-    state.routeOptions.find((o) => o.id === state.selectedRouteOptionId) ??
-    state.routeOptions[0];
-  const savings = option?.savings ?? 0;
+  const grocerySubtotal = state.groceryItems.reduce(
+      (sum, item) => sum + estimateGroceryLinePrice(item),
+      0
+    );
+  const grocerySavings =
+    state.selectedGroceryVendor && grocerySubtotal > 0
+      ? Math.max(0, Math.round(grocerySubtotal * 0.12))
+      : 0;
+  const savings = grocerySavings;
 
   return {
     itemCount,

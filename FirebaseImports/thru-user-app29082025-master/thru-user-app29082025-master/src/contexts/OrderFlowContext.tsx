@@ -28,6 +28,7 @@ type OrderFlowContextValue = OrderFlowState & {
   addGroceryItem: (item: Omit<GroceryListItem, 'id'>) => void;
   updateGroceryItem: (id: string, patch: Partial<GroceryListItem>) => void;
   removeGroceryItem: (id: string) => void;
+  setGroceryItems: (items: GroceryListItem[]) => void;
   setFoodItems: (items: CartFoodItem[]) => void;
   updateFoodItem: (id: string, patch: Partial<CartFoodItem>) => void;
   removeFoodItem: (id: string) => void;
@@ -35,6 +36,7 @@ type OrderFlowContextValue = OrderFlowState & {
   updateMedicineItem: (id: string, patch: Partial<CartMedicineItem>) => void;
   removeMedicineItem: (id: string) => void;
   setSelectedFoodVendor: (vendor: PickupStore | null) => void;
+  setSelectedGroceryVendor: (vendor: PickupStore | null) => void;
   setSelectedMedicineVendor: (vendor: PickupStore | null) => void;
   syncFoodCartFromStorage: () => void;
   setRouteOptions: (options: RouteOption[]) => void;
@@ -139,14 +141,30 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeGroceryItem = React.useCallback((id: string) => {
+    setState((prev) => {
+      const groceryItems = prev.groceryItems.filter((i) => i.id !== id);
+      return {
+        ...prev,
+        groceryItems,
+        selectedGroceryVendor: groceryItems.length > 0 ? prev.selectedGroceryVendor : null,
+      };
+    });
+  }, []);
+
+  const setGroceryItems = React.useCallback((items: GroceryListItem[]) => {
     setState((prev) => ({
       ...prev,
-      groceryItems: prev.groceryItems.filter((i) => i.id !== id),
+      groceryItems: items,
+      selectedGroceryVendor: items.length > 0 ? prev.selectedGroceryVendor : null,
     }));
   }, []);
 
   const setFoodItems = React.useCallback((items: CartFoodItem[]) => {
-    setState((prev) => ({ ...prev, foodItems: items }));
+    setState((prev) => ({
+      ...prev,
+      foodItems: items,
+      selectedFoodVendor: items.length > 0 ? prev.selectedFoodVendor : null,
+    }));
   }, []);
 
   const updateFoodItem = React.useCallback((id: string, itemPatch: Partial<CartFoodItem>) => {
@@ -157,14 +175,22 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeFoodItem = React.useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      foodItems: prev.foodItems.filter((i) => i.id !== id),
-    }));
+    setState((prev) => {
+      const foodItems = prev.foodItems.filter((i) => i.id !== id);
+      return {
+        ...prev,
+        foodItems,
+        selectedFoodVendor: foodItems.length > 0 ? prev.selectedFoodVendor : null,
+      };
+    });
   }, []);
 
   const setMedicineItems = React.useCallback((items: CartMedicineItem[]) => {
-    setState((prev) => ({ ...prev, medicineItems: items }));
+    setState((prev) => ({
+      ...prev,
+      medicineItems: items,
+      selectedMedicineVendor: items.length > 0 ? prev.selectedMedicineVendor : null,
+    }));
   }, []);
 
   const updateMedicineItem = React.useCallback((id: string, itemPatch: Partial<CartMedicineItem>) => {
@@ -175,14 +201,22 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeMedicineItem = React.useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      medicineItems: prev.medicineItems.filter((i) => i.id !== id),
-    }));
+    setState((prev) => {
+      const medicineItems = prev.medicineItems.filter((i) => i.id !== id);
+      return {
+        ...prev,
+        medicineItems,
+        selectedMedicineVendor: medicineItems.length > 0 ? prev.selectedMedicineVendor : null,
+      };
+    });
   }, []);
 
   const setSelectedFoodVendor = React.useCallback((vendor: PickupStore | null) => {
     setState((prev) => ({ ...prev, selectedFoodVendor: vendor }));
+  }, []);
+
+  const setSelectedGroceryVendor = React.useCallback((vendor: PickupStore | null) => {
+    setState((prev) => ({ ...prev, selectedGroceryVendor: vendor }));
   }, []);
 
   const setSelectedMedicineVendor = React.useCallback((vendor: PickupStore | null) => {
@@ -251,6 +285,7 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
       addGroceryItem,
       updateGroceryItem,
       removeGroceryItem,
+      setGroceryItems,
       setFoodItems,
       updateFoodItem,
       removeFoodItem,
@@ -258,6 +293,7 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
       updateMedicineItem,
       removeMedicineItem,
       setSelectedFoodVendor,
+      setSelectedGroceryVendor,
       setSelectedMedicineVendor,
       syncFoodCartFromStorage,
       setRouteOptions,
@@ -277,6 +313,7 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
       addGroceryItem,
       updateGroceryItem,
       removeGroceryItem,
+      setGroceryItems,
       setFoodItems,
       updateFoodItem,
       removeFoodItem,
@@ -284,6 +321,7 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
       updateMedicineItem,
       removeMedicineItem,
       setSelectedFoodVendor,
+      setSelectedGroceryVendor,
       setSelectedMedicineVendor,
       syncFoodCartFromStorage,
       setRouteOptions,

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Check, Loader2, MapPin, MapPinOff, Sparkles } from 'lucide-react';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
 import type { RouteShopSearchTier } from '@/lib/route-shop-search';
-import type { RouteOption } from '@/types/order-flow';
+import type { OrderCategory, RouteOption } from '@/types/order-flow';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -13,14 +13,42 @@ type Props = {
   searchTier?: RouteShopSearchTier;
 };
 
+function shopTypeLabel(categories: OrderCategory[]): string {
+  const hasGrocery = categories.includes('grocery');
+  const hasFood = categories.includes('food');
+  const hasMedicine = categories.includes('medicine');
+
+  if (hasMedicine && !hasGrocery && !hasFood) return 'pharmacies';
+  if (hasFood && !hasGrocery && !hasMedicine) return 'food stops';
+  if (hasGrocery && hasFood) return 'shops';
+  if (hasGrocery) return 'grocery shops';
+  return 'shops';
+}
+
+function optionsSubtitle(categories: OrderCategory[], searchTier: RouteShopSearchTier): string {
+  const label = shopTypeLabel(categories);
+  if (searchTier === 'detour') {
+    return `Nothing directly on your route — these ${label} are within a 5 km detour.`;
+  }
+  if (categories.includes('medicine') && !categories.includes('grocery')) {
+    return 'Pick a pharmacy along your trip for prescription pickup.';
+  }
+  if (categories.includes('food') && !categories.includes('grocery')) {
+    return 'Pick where you would like to stop for food along your trip.';
+  }
+  return 'Pick where you would like to stop for groceries along your trip.';
+}
+
 function ShopOptionCard({
   opt,
   selected,
   onSelect,
+  medicineOnly,
 }: {
   opt: RouteOption;
   selected: boolean;
   onSelect: () => void;
+  medicineOnly?: boolean;
 }) {
   return (
     <button
@@ -59,11 +87,23 @@ function ShopOptionCard({
         )}
       </div>
       <div className="flex items-center gap-3 mt-3 flex-wrap">
-        <span className="text-xl font-bold tabular-nums">
-          ₹{opt.totalPrice.toLocaleString('en-IN')}
-        </span>
-        <span className="text-sm font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-          +{opt.addedMinutes} min detour
+        {!medicineOnly && (
+          <span className="text-xl font-bold tabular-nums">
+            ₹{opt.totalPrice.toLocaleString('en-IN')}
+          </span>
+        )}
+        {medicineOnly && (
+          <span className="text-sm font-medium text-muted-foreground">Quote pending</span>
+        )}
+        <span
+          className={cn(
+            'text-sm font-medium px-2.5 py-1 rounded-full',
+            opt.isOnPath
+              ? 'bg-emerald-500/10 text-emerald-700'
+              : 'bg-primary/10 text-primary'
+          )}
+        >
+          {opt.timingLabel ?? (opt.isOnPath ? 'On your path' : `+${opt.addedMinutes} min detour`)}
         </span>
         {opt.savings > 0 && (
           <span className="text-sm text-emerald-600 font-medium">
@@ -76,7 +116,13 @@ function ShopOptionCard({
 }
 
 export function RouteOptionsPicker({ loading, searchComplete, searchTier = 'none' }: Props) {
-  const { routeOptions, selectedRouteOptionId, selectRouteOption } = useOrderFlow();
+  const { routeOptions, selectedRouteOptionId, selectRouteOption, categories } = useOrderFlow();
+
+  const medicineOnly =
+    categories.includes('medicine') &&
+    !categories.includes('grocery') &&
+    !categories.includes('food');
+  const shopLabel = shopTypeLabel(categories);
 
   const suggested = routeOptions.filter((o) => o.isSuggested);
   const others = routeOptions.filter((o) => !o.isSuggested);
@@ -96,7 +142,7 @@ export function RouteOptionsPicker({ loading, searchComplete, searchTier = 'none
         <div>
           <h2 className="text-2xl font-bold tracking-tight">No shops on your route</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            We couldn&apos;t find grocery shops along this route or within a 5 km detour.
+            We couldn&apos;t find {shopLabel} along this route or within a 5 km detour.
           </p>
         </div>
         <div className="rounded-2xl bg-muted/30 p-6 text-center text-muted-foreground">
@@ -122,9 +168,7 @@ export function RouteOptionsPicker({ loading, searchComplete, searchTier = 'none
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Shops on your way</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          {searchTier === 'detour'
-            ? 'Nothing directly on your route — these stops are within a 5 km detour.'
-            : 'Pick where you&apos;d like to stop for groceries along your trip.'}
+          {optionsSubtitle(categories, searchTier)}
         </p>
       </div>
 
@@ -139,6 +183,7 @@ export function RouteOptionsPicker({ loading, searchComplete, searchTier = 'none
               opt={opt}
               selected={selectedRouteOptionId === opt.id}
               onSelect={() => selectRouteOption(opt.id)}
+              medicineOnly={medicineOnly}
             />
           ))}
         </section>
@@ -155,6 +200,7 @@ export function RouteOptionsPicker({ loading, searchComplete, searchTier = 'none
               opt={opt}
               selected={selectedRouteOptionId === opt.id}
               onSelect={() => selectRouteOption(opt.id)}
+              medicineOnly={medicineOnly}
             />
           ))}
         </section>

@@ -6,13 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
 import { GroceryItemRow } from '@/components/order/GroceryItemRow';
+import { CategoryRouteShops } from '@/components/order/CategoryRouteShops';
 import { getUnitDefaults } from '@/lib/grocery-unit-defaults';
 import { parseGroceryVoiceInput } from '@/lib/grocery-voice-parser';
 import { scalableGroceryAIService } from '@/lib/scalable-grocery-ai-service';
 import { useToast } from '@/hooks/use-toast';
 
 export function GroceryListEditor() {
-  const { groceryItems, addGroceryItem, updateGroceryItem, removeGroceryItem } = useOrderFlow();
+  const { groceryItems, addGroceryItem, updateGroceryItem, removeGroceryItem, selectedGroceryVendor, setSelectedGroceryVendor } = useOrderFlow();
   const { toast } = useToast();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [query, setQuery] = React.useState('');
@@ -173,6 +174,12 @@ export function GroceryListEditor() {
           Your list is empty — search or use the mic to add items
         </p>
       )}
+
+      <CategoryRouteShops
+        category="grocery"
+        selectedVendor={selectedGroceryVendor}
+        onSelectVendor={setSelectedGroceryVendor}
+      />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { useOrderFlow } from '@/contexts/OrderFlowContext';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { estimateOrderTotal } from '@/lib/route-options-optimizer';
+import { computeCartSummary, formatCartInr, getPickupStores } from '@/lib/order-cart-pricing';
 
 export function ReviewSummary() {
   const flow = useOrderFlow();
@@ -13,15 +13,15 @@ export function ReviewSummary() {
   const { toast } = useToast();
   const [placing, setPlacing] = React.useState(false);
 
-  const option = flow.selectedRouteOptionId
-    ? flow.routeOptions.find((o) => o.id === flow.selectedRouteOptionId)
-    : flow.routeOptions[0];
-
-  const hasRouteOptions = flow.routeOptions.length > 0;
+  const summary = React.useMemo(() => computeCartSummary(flow), [flow]);
+  const pickupStores = React.useMemo(() => getPickupStores(flow), [flow]);
   const groceryCount = flow.groceryItems.length;
   const categories = flow.categories.join(', ') || '—';
-  const estimatedTotal = option?.totalPrice ?? estimateOrderTotal(flow.groceryItems);
-  const showPricing = hasRouteOptions || groceryCount > 0;
+  const hasItems = summary.itemCount > 0;
+  const medicineOnly =
+    flow.categories.includes('medicine') &&
+    !flow.categories.includes('grocery') &&
+    !flow.categories.includes('food');
 
   const handleCheckout = async () => {
     setPlacing(true);
@@ -29,11 +29,13 @@ export function ReviewSummary() {
       sessionStorage.setItem(
         'thru-checkout-summary',
         JSON.stringify({
-          option: option ?? null,
+          pickupStores,
           groceryItems: flow.groceryItems,
+          foodItems: flow.foodItems,
+          medicineItems: flow.medicineItems,
           destination: flow.destinationQuery,
           departureTime: flow.departureTime,
-          estimatedTotal,
+          estimatedTotal: summary.total,
         })
       );
       router.push('/cart');
@@ -49,34 +51,29 @@ export function ReviewSummary() {
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Review & checkout</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          {hasRouteOptions
-            ? "Here's what Thru found for your trip."
+          {hasItems
+            ? "Here's what you've added for your trip."
             : 'Your route is ready — continue when you are.'}
         </p>
       </div>
 
-      {showPricing && (
+      {hasItems && (
         <div className="rounded-2xl bg-muted/30 p-5 space-y-4">
-          {groceryCount > 0 && (
+          {!medicineOnly && (
             <div className="flex justify-between items-baseline">
-              <span className="text-muted-foreground">Shopping total</span>
+              <span className="text-muted-foreground">Order total</span>
               <span className="text-3xl font-bold tabular-nums">
-                ₹{estimatedTotal.toLocaleString('en-IN')}
+                {formatCartInr(summary.total)}
               </span>
             </div>
           )}
-          {hasRouteOptions && (option?.savings ?? 0) > 0 && (
+          {medicineOnly && (
+            <p className="text-sm font-medium text-muted-foreground">Pharmacy quote pending</p>
+          )}
+          {summary.savings > 0 && (
             <div className="flex justify-between text-emerald-600 font-medium">
               <span>Estimated savings</span>
-              <span>₹{option!.savings.toLocaleString('en-IN')}</span>
-            </div>
-          )}
-          {hasRouteOptions && option && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Additional drive time</span>
-              <span className="font-semibold text-primary">
-                Only +{option.addedMinutes} min
-              </span>
+              <span>−{formatCartInr(summary.savings)}</span>
             </div>
           )}
         </div>
@@ -92,15 +89,20 @@ export function ReviewSummary() {
           <span className="font-medium capitalize">{categories}</span>
           {groceryCount > 0 && ` · ${groceryCount} grocery item${groceryCount > 1 ? 's' : ''}`}
         </p>
-        {option?.shopNames?.length ? (
-          <p>
-            <span className="text-muted-foreground">Pickup:</span>{' '}
-            <span className="font-medium">{option.shopNames.join(', ')}</span>
-            {option.streetName ? (
-              <span className="text-muted-foreground"> · {option.streetName}</span>
-            ) : null}
-          </p>
-        ) : null}
+        {pickupStores.length > 0 && (
+          <div className="space-y-1 pt-1">
+            <p className="text-muted-foreground">Pickup stops:</p>
+            {pickupStores.map((store) => (
+              <p key={`${store.category}-${store.vendorId}`}>
+                <span className="font-medium capitalize">{store.category}:</span>{' '}
+                {store.vendorName}
+                {store.address ? (
+                  <span className="text-muted-foreground"> · {store.address}</span>
+                ) : null}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
 
       <Button

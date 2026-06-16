@@ -90,6 +90,21 @@ export function isGroceryStoreType(
   return false;
 }
 
+export function isMedicineStoreType(
+  rawType?: string | null,
+  categories: string[] = [],
+  name = ''
+): boolean {
+  const canonical = resolveCanonicalStoreType(rawType, categories, name);
+  const norm = normalizeToken(String(canonical)).replace(/\s+/g, '_');
+  if (norm === 'medical' || norm === 'pharmacy') return true;
+  if (/\b(pharmacy|chemist|medical|med\s*store|drug\s*store|medicine)\b/i.test(name)) return true;
+  return categories.some((c) => {
+    const n = normalizeToken(c);
+    return n.includes('medical') || n.includes('pharmacy') || n.includes('chemist');
+  });
+}
+
 export function shopMatchesStoreTypes(
   shop: { type: StoreType | string; categories?: string[]; name?: string },
   requestedTypes: StoreType[]
@@ -102,13 +117,18 @@ export function shopMatchesStoreTypes(
   const canonicalNorm = normalizeToken(String(canonical)).replace(/\s+/g, '_');
   const groceryRequested = requested.has('grocery') || requested.has('supermarket');
   const foodRequested = [...FOOD_TYPE_TOKENS].some((t) => requested.has(t));
+  const medicineRequested = requested.has('medical') || requested.has('pharmacy');
 
   if (groceryRequested && !foodRequested && isFoodStoreType(shop.type, shop.categories, shop.name)) {
     return false;
   }
 
-  if (foodRequested && !groceryRequested && isGroceryStoreType(shop.type, shop.categories, shop.name)) {
+  if (foodRequested && !groceryRequested && !medicineRequested && isGroceryStoreType(shop.type, shop.categories, shop.name)) {
     return false;
+  }
+
+  if (medicineRequested && !groceryRequested && !foodRequested) {
+    return isMedicineStoreType(shop.type, shop.categories, shop.name);
   }
 
   if (requested.has(canonicalNorm)) return true;
@@ -116,6 +136,10 @@ export function shopMatchesStoreTypes(
   // Grocery list should include general stores / "Other" that are clearly grocery shops.
   if (groceryRequested) {
     return isGroceryStoreType(shop.type, shop.categories, shop.name);
+  }
+
+  if (medicineRequested) {
+    return isMedicineStoreType(shop.type, shop.categories, shop.name);
   }
 
   return false;

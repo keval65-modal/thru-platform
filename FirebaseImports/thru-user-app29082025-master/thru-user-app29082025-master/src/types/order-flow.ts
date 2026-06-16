@@ -104,6 +104,7 @@ export type OrderFlowState = {
   foodItems: CartFoodItem[];
   medicineItems: CartMedicineItem[];
   selectedFoodVendor: PickupStore | null;
+  selectedGroceryVendor: PickupStore | null;
   selectedMedicineVendor: PickupStore | null;
   selectedRouteOptionId: string | null;
   routeOptions: RouteOption[];
@@ -112,7 +113,6 @@ export type OrderFlowState = {
 export const ORDER_FLOW_STEPS = [
   { id: 'destination', label: 'Where', path: '/order/destination' },
   { id: 'needs', label: 'What', path: '/order/needs' },
-  { id: 'optimize', label: 'Options', path: '/order/optimize' },
   { id: 'review', label: 'Checkout', path: '/order/review' },
 ] as const;
 

@@ -7,13 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import {
   buildOrderId,
@@ -24,21 +17,13 @@ import {
 } from '@/lib/prescription-types';
 import { prescriptionValidationMessage, prescriptionManualReviewMessage } from '@/lib/prescription-validation';
 import { Camera, Loader2, Plus, Trash2, Pill, Upload, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { routeBasedShopDiscovery } from '@/lib/route-based-shop-discovery';
 import { MedicineQuantitySuggestions } from '@/components/medicine/MedicineQuantitySuggestions';
 import type {
   MedicineDosageSuggestion,
   MedicineQuantitySuggestion,
 } from '@/lib/medicine-quantity-search';
+import { CategoryRouteShops } from '@/components/order/CategoryRouteShops';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
-
-type PharmacyShop = {
-  id: string;
-  name: string;
-  address?: string;
-  storeType?: string;
-  location?: { lat: number; lng: number };
-};
 
 type Props = {
   startCoords?: { lat: number; lng: number } | null;
@@ -55,7 +40,7 @@ export function MedicineOrderPanel({
 }: Props) {
   const router = useRouter();
   const { toast } = useToast();
-  const { setMedicineItems, setSelectedMedicineVendor } = useOrderFlow();
+  const { setMedicineItems, selectedMedicineVendor, setSelectedMedicineVendor } = useOrderFlow();
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const [imagePreview, setImagePreview] = React.useState<string | null>(null);
@@ -70,50 +55,6 @@ export function MedicineOrderPanel({
   const [manualQty, setManualQty] = React.useState(1);
   const [manualStrength, setManualStrength] = React.useState<string | undefined>();
   const [manualPackLabel, setManualPackLabel] = React.useState<string | undefined>();
-  const [pharmacies, setPharmacies] = React.useState<PharmacyShop[]>([]);
-  const [selectedVendorId, setSelectedVendorId] = React.useState('');
-  const [loadingShops, setLoadingShops] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!startCoords || !destCoords) return;
-    let cancelled = false;
-    (async () => {
-      setLoadingShops(true);
-      try {
-        const result = await routeBasedShopDiscovery.findShopsAlongRoute(
-          {
-            latitude: startCoords.lat,
-            longitude: startCoords.lng,
-            address: tripStartLabel ?? '',
-          },
-          {
-            latitude: destCoords.lat,
-            longitude: destCoords.lng,
-            address: tripDestLabel ?? '',
-          },
-          5,
-          ['medical', 'pharmacy']
-        );
-        if (cancelled) return;
-        const shops: PharmacyShop[] = (result.shops ?? []).map((s) => ({
-          id: s.id,
-          name: s.name,
-          address: s.address,
-          storeType: s.type,
-          location: s.coordinates,
-        }));
-        setPharmacies(shops);
-        if (shops[0]) setSelectedVendorId(shops[0].id);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!cancelled) setLoadingShops(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [startCoords, destCoords, tripStartLabel, tripDestLabel]);
 
   React.useEffect(() => {
     setMedicineItems(
@@ -126,18 +67,6 @@ export function MedicineOrderPanel({
       }))
     );
   }, [medicines, setMedicineItems]);
-
-  React.useEffect(() => {
-    const vendor = pharmacies.find((p) => p.id === selectedVendorId);
-    if (vendor) {
-      setSelectedMedicineVendor({
-        category: 'medicine',
-        vendorId: vendor.id,
-        vendorName: vendor.name,
-        address: vendor.address,
-      });
-    }
-  }, [selectedVendorId, pharmacies, setSelectedMedicineVendor]);
 
   const readFileAsDataUri = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -277,7 +206,7 @@ export function MedicineOrderPanel({
 
   const canPlaceOrder =
     Boolean(imagePreview) &&
-    selectedVendorId &&
+    selectedMedicineVendor &&
     startCoords &&
     destCoords &&
     (requiresManualReview || (dateValid === true && medicines.length > 0));
@@ -297,7 +226,7 @@ export function MedicineOrderPanel({
       return;
     }
 
-    const vendor = pharmacies.find((p) => p.id === selectedVendorId);
+    const vendor = selectedMedicineVendor;
     if (!vendor) return;
 
     setPlacing(true);
@@ -346,16 +275,14 @@ export function MedicineOrderPanel({
       grandTotal: 0,
       platformFee: 0,
       paymentGatewayFee: 0,
-      vendorIds: [vendor.id],
+      vendorIds: [vendor.vendorId],
       vendorPortions: [
         {
-          vendorId: vendor.id,
-          vendorName: vendor.name,
+          vendorId: vendor.vendorId,
+          vendorName: vendor.vendorName,
           vendorAddress: vendor.address ?? '',
-          vendorType: vendor.storeType ?? 'pharmacy',
-          vendorLocation: vendor.location
-            ? { latitude: vendor.location.lat, longitude: vendor.location.lng }
-            : null,
+          vendorType: 'pharmacy',
+          vendorLocation: null,
           status: 'Pending Vendor Confirmation',
           vendorSubtotal: 0,
           orderType: 'medicine',
@@ -377,8 +304,8 @@ export function MedicineOrderPanel({
       toast({
         title: 'Medicine order placed',
         description: requiresManualReview
-          ? `Order ${orderId} sent to ${vendor.name}. The pharmacy will review your prescription and confirm medicines.`
-          : `Order ${orderId} sent to ${vendor.name}. Await pharmacy quote.`,
+          ? `Order ${orderId} sent to ${vendor.vendorName}. The pharmacy will review your prescription and confirm medicines.`
+          : `Order ${orderId} sent to ${vendor.vendorName}. Await pharmacy quote.`,
       });
       router.push(`/order-tracking/${orderId}`);
     } catch (e) {
@@ -565,31 +492,11 @@ export function MedicineOrderPanel({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label>Pharmacy on your route</Label>
-        {loadingShops ? (
-          <p className="text-sm text-muted-foreground flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> Finding pharmacies…
-          </p>
-        ) : pharmacies.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Set start and destination above to find medical stores along your route.
-          </p>
-        ) : (
-          <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select pharmacy" />
-            </SelectTrigger>
-            <SelectContent>
-              {pharmacies.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
+      <CategoryRouteShops
+        category="medicine"
+        selectedVendor={selectedMedicineVendor}
+        onSelectVendor={setSelectedMedicineVendor}
+      />
 
       <Button
         className="w-full"

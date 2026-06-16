@@ -46,50 +46,55 @@ function SimpleCartRow({
   onIncrease: () => void;
   onRemove: () => void;
 }) {
+  const qtyControls = (
+    <div className="flex items-center rounded-full border border-border/90 bg-muted/30 p-0.5">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-full"
+        onClick={onDecrease}
+        aria-label="Decrease quantity"
+      >
+        <Minus className="h-4 w-4" />
+      </Button>
+      <span className="w-6 text-center text-sm font-semibold tabular-nums">{quantity}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-full"
+        onClick={onIncrease}
+        aria-label="Increase quantity"
+      >
+        <Plus className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="flex items-center justify-between gap-3 py-3 border-b border-border/40 last:border-0">
-      <div className="min-w-0 flex-1">
-        <p className="font-medium truncate">{name}</p>
-        {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
-        <p className="text-sm font-semibold mt-1 tabular-nums">
-          {priceLabel ?? formatCartInr(linePrice)}
-        </p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <div className="flex items-center rounded-full border border-border/90 bg-muted/30 p-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 rounded-full"
-            onClick={onDecrease}
-            aria-label="Decrease quantity"
-          >
-            <Minus className="h-4 w-4" />
-          </Button>
-          <span className="w-6 text-center text-sm font-semibold tabular-nums">{quantity}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 rounded-full"
-            onClick={onIncrease}
-            aria-label="Increase quantity"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+    <div className="py-3 border-b border-border/40 last:border-0">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{name}</p>
+          {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+          <p className="text-sm font-semibold mt-1 tabular-nums">
+            {priceLabel ?? formatCartInr(linePrice)}
+          </p>
         </div>
         <Button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-full text-muted-foreground hover:text-destructive"
+          variant="outline"
+          size="sm"
+          className="shrink-0 h-8 px-2.5 text-destructive border-destructive/30 hover:bg-destructive/10"
           onClick={onRemove}
           aria-label="Remove item"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-4 w-4 mr-1" />
+          Remove
         </Button>
       </div>
+      <div className="mt-2 flex justify-start">{qtyControls}</div>
     </div>
   );
 }
@@ -107,10 +112,13 @@ export function OrderCart() {
     syncFoodCartFromStorage,
     updateGroceryItem,
     removeGroceryItem,
+    setGroceryItems,
     updateFoodItem,
     removeFoodItem,
+    setFoodItems,
     updateMedicineItem,
     removeMedicineItem,
+    setMedicineItems,
   } = flow;
 
   const summary = React.useMemo(() => computeCartSummary(flow), [flow]);
@@ -206,12 +214,23 @@ export function OrderCart() {
 
             {categories.includes('grocery') && groceryItems.length > 0 && (
               <section>
-                <h3 className="text-sm font-semibold mb-1 flex items-center justify-between">
+                <h3 className="text-sm font-semibold mb-1 flex items-center justify-between gap-2">
                   <span>{CATEGORY_EMOJI.grocery} Grocery</span>
-                  <span className="text-muted-foreground font-normal tabular-nums">
-                    {formatCartInr(
-                      groceryItems.reduce((s, i) => s + estimateGroceryLinePrice(i), 0)
-                    )}
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground font-normal tabular-nums">
+                      {formatCartInr(
+                        groceryItems.reduce((s, i) => s + estimateGroceryLinePrice(i), 0)
+                      )}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setGroceryItems([])}
+                    >
+                      Clear all
+                    </Button>
                   </span>
                 </h3>
                 <div className="rounded-xl border border-border/50 px-3">
@@ -219,6 +238,7 @@ export function OrderCart() {
                     <GroceryItemRow
                       key={item.id}
                       item={item}
+                      variant="cart"
                       onChange={(patch) => updateGroceryItem(item.id, patch)}
                       onRemove={() => removeGroceryItem(item.id)}
                     />
@@ -229,12 +249,23 @@ export function OrderCart() {
 
             {categories.includes('food') && foodItems.length > 0 && (
               <section>
-                <h3 className="text-sm font-semibold mb-1 flex items-center justify-between">
+                <h3 className="text-sm font-semibold mb-1 flex items-center justify-between gap-2">
                   <span>{CATEGORY_EMOJI.food} Food</span>
-                  <span className="text-muted-foreground font-normal tabular-nums">
-                    {formatCartInr(
-                      foodItems.reduce((s, i) => s + estimateFoodLinePrice(i), 0)
-                    )}
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground font-normal tabular-nums">
+                      {formatCartInr(
+                        foodItems.reduce((s, i) => s + estimateFoodLinePrice(i), 0)
+                      )}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setFoodItems([])}
+                    >
+                      Clear all
+                    </Button>
                   </span>
                 </h3>
                 <div className="rounded-xl border border-border/50 px-3">
@@ -262,14 +293,25 @@ export function OrderCart() {
 
             {categories.includes('medicine') && medicineItems.length > 0 && (
               <section>
-                <h3 className="text-sm font-semibold mb-1 flex items-center justify-between">
+                <h3 className="text-sm font-semibold mb-1 flex items-center justify-between gap-2">
                   <span>{CATEGORY_EMOJI.medicine} Medicine</span>
-                  <span className="text-muted-foreground font-normal tabular-nums">
-                    {summary.categories.find((c) => c.category === 'medicine')?.hasQuotePending
-                      ? 'Quote pending'
-                      : formatCartInr(
-                          medicineItems.reduce((s, i) => s + estimateMedicineLinePrice(i), 0)
-                        )}
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground font-normal tabular-nums">
+                      {summary.categories.find((c) => c.category === 'medicine')?.hasQuotePending
+                        ? 'Quote pending'
+                        : formatCartInr(
+                            medicineItems.reduce((s, i) => s + estimateMedicineLinePrice(i), 0)
+                          )}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setMedicineItems([])}
+                    >
+                      Clear all
+                    </Button>
                   </span>
                 </h3>
                 <div className="rounded-xl border border-border/50 px-3">

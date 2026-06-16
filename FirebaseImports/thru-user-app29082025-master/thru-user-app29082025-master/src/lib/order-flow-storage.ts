@@ -1,7 +1,25 @@
 import type { OrderFlowState } from '@/types/order-flow';
 import { clampScheduledDepartureIso, isDepartureIsoInPast } from '@/lib/departure-time';
 
-const STORAGE_KEY = 'thru-order-flow-v1';
+const STORAGE_KEY = 'thru-order-flow-v2';
+
+function sanitizeRouteOptions(state: OrderFlowState): OrderFlowState {
+  const stale =
+    state.routeOptions.length > 0 &&
+    state.routeOptions.some(
+      (o) =>
+        o.id.startsWith('opt-') ||
+        !o.shopAddress ||
+        o.addedMinutes > 60 ||
+        !o.timingLabel
+    );
+  if (!stale) return state;
+  return {
+    ...state,
+    routeOptions: [],
+    selectedRouteOptionId: null,
+  };
+}
 
 export function defaultOrderFlowState(): OrderFlowState {
   const now = new Date();
@@ -25,6 +43,7 @@ export function defaultOrderFlowState(): OrderFlowState {
     foodItems: [],
     medicineItems: [],
     selectedFoodVendor: null,
+    selectedGroceryVendor: null,
     selectedMedicineVendor: null,
     selectedRouteOptionId: null,
     routeOptions: [],
@@ -36,7 +55,10 @@ export function loadOrderFlowState(): OrderFlowState {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultOrderFlowState();
-    const merged = { ...defaultOrderFlowState(), ...JSON.parse(raw) } as OrderFlowState;
+    const merged = sanitizeRouteOptions({
+      ...defaultOrderFlowState(),
+      ...JSON.parse(raw),
+    } as OrderFlowState);
     if (!merged.isImmediate && merged.departureTime && isDepartureIsoInPast(merged.departureTime)) {
       merged.departureTime = clampScheduledDepartureIso(merged.departureTime);
     }
