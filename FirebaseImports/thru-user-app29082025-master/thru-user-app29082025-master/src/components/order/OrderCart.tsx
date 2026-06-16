@@ -109,7 +109,6 @@ export function OrderCart() {
     groceryItems,
     foodItems,
     medicineItems,
-    syncFoodCartFromStorage,
     updateGroceryItem,
     removeGroceryItem,
     setGroceryItems,
@@ -122,18 +121,6 @@ export function OrderCart() {
   } = flow;
 
   const summary = React.useMemo(() => computeCartSummary(flow), [flow]);
-
-  React.useEffect(() => {
-    if (!hydrated || !categories.includes('food')) return;
-    syncFoodCartFromStorage();
-  }, [hydrated, categories, open, syncFoodCartFromStorage]);
-
-  React.useEffect(() => {
-    if (!hydrated || !categories.includes('food')) return;
-    const onFocus = () => syncFoodCartFromStorage();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [hydrated, categories, syncFoodCartFromStorage]);
 
   if (!hydrated) return null;
 
@@ -277,9 +264,9 @@ export function OrderCart() {
                       quantity={item.quantity}
                       linePrice={estimateFoodLinePrice(item)}
                       onDecrease={() =>
-                        updateFoodItem(item.id, {
-                          quantity: Math.max(1, item.quantity - 1),
-                        })
+                        item.quantity <= 1
+                          ? removeFoodItem(item.id)
+                          : updateFoodItem(item.id, { quantity: item.quantity - 1 })
                       }
                       onIncrease={() =>
                         updateFoodItem(item.id, { quantity: item.quantity + 1 })

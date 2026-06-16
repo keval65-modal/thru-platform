@@ -1,3 +1,4 @@
+import { clearFoodCartStorage } from '@/lib/food-cart-storage';
 import { consumerOrderService } from '@/lib/consumer-order-service';
 import {
   computeCartSummary,
@@ -165,8 +166,7 @@ export async function placeOrderFromFlow(
   }
 
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('food_cart');
-    localStorage.removeItem('food_cart_shop');
+    clearFoodCartStorage();
   }
 
   return { success: true, orderId };

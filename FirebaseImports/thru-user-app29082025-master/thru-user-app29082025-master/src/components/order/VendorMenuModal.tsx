@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
+import { persistFoodCartStorage } from '@/lib/food-cart-storage';
 import { formatCartInr } from '@/lib/order-cart-pricing';
 import type { CartFoodItem } from '@/types/order-flow';
 import { useToast } from '@/hooks/use-toast';
@@ -39,22 +40,6 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
-
-function persistFoodCartToStorage(items: CartFoodItem[], shop: VendorMenuShop) {
-  if (typeof window === 'undefined') return;
-  const entries = items.map((item) => [
-    item.id,
-    {
-      item: { id: item.id, name: item.name, price: item.unitPrice },
-      quantity: item.quantity,
-    },
-  ]);
-  localStorage.setItem('food_cart', JSON.stringify(entries));
-  localStorage.setItem(
-    'food_cart_shop',
-    JSON.stringify({ id: shop.id, name: shop.name, address: shop.address })
-  );
-}
 
 export function VendorMenuModal({ shop, open, onOpenChange }: Props) {
   const { toast } = useToast();
@@ -184,7 +169,7 @@ export function VendorMenuModal({ shop, open, onOpenChange }: Props) {
 
     setSelectedFoodVendor(vendor);
     setFoodItems(nextItems);
-    persistFoodCartToStorage(nextItems, shop);
+    persistFoodCartStorage(nextItems, shop);
 
     toast({
       title: 'Added to cart',

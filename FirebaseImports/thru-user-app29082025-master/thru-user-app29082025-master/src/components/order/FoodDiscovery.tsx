@@ -15,15 +15,10 @@ export function FoodDiscovery() {
     removeFoodItem,
     selectedFoodVendor,
     setSelectedFoodVendor,
-    syncFoodCartFromStorage,
   } = useOrderFlow();
 
   const [menuShop, setMenuShop] = React.useState<BrowseShopInfo | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    syncFoodCartFromStorage();
-  }, [syncFoodCartFromStorage]);
 
   const openMenu = (shop: BrowseShopInfo) => {
     setMenuShop(shop);
@@ -54,7 +49,9 @@ export function FoodDiscovery() {
                     size="icon"
                     className="h-8 w-8 rounded-full"
                     onClick={() =>
-                      updateFoodItem(item.id, { quantity: Math.max(1, item.quantity - 1) })
+                      item.quantity <= 1
+                        ? removeFoodItem(item.id)
+                        : updateFoodItem(item.id, { quantity: item.quantity - 1 })
                     }
                     aria-label="Decrease quantity"
                   >

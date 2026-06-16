@@ -12,6 +12,10 @@ import type {
   RouteStop,
 } from '@/types/order-flow';
 import {
+  importFoodCartFromStorage,
+  persistFoodCartStorage,
+} from '@/lib/food-cart-storage';
+import {
   defaultOrderFlowState,
   loadOrderFlowState,
   saveOrderFlowState,
@@ -66,7 +70,23 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = React.useState(false);
 
   React.useEffect(() => {
-    setState(loadOrderFlowState());
+    const loaded = loadOrderFlowState();
+    if (loaded.foodItems.length === 0) {
+      const imported = importFoodCartFromStorage();
+      if (imported) {
+        setState({
+          ...loaded,
+          foodItems: imported.foodItems,
+          selectedFoodVendor: imported.selectedFoodVendor,
+          categories: loaded.categories.includes('food')
+            ? loaded.categories
+            : [...loaded.categories, 'food'],
+        });
+        setHydrated(true);
+        return;
+      }
+    }
+    setState(loaded);
     setHydrated(true);
   }, []);
 
@@ -74,6 +94,11 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated) return;
     saveOrderFlowState(state);
   }, [state, hydrated]);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    persistFoodCartStorage(state.foodItems, state.selectedFoodVendor);
+  }, [hydrated, state.foodItems, state.selectedFoodVendor]);
 
   const patch = React.useCallback((partial: Partial<OrderFlowState>) => {
     setState((prev) => ({ ...prev, ...partial }));
@@ -168,10 +193,20 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateFoodItem = React.useCallback((id: string, itemPatch: Partial<CartFoodItem>) => {
-    setState((prev) => ({
-      ...prev,
-      foodItems: prev.foodItems.map((i) => (i.id === id ? { ...i, ...itemPatch } : i)),
-    }));
+    setState((prev) => {
+      if (itemPatch.quantity !== undefined && itemPatch.quantity <= 0) {
+        const foodItems = prev.foodItems.filter((i) => i.id !== id);
+        return {
+          ...prev,
+          foodItems,
+          selectedFoodVendor: foodItems.length > 0 ? prev.selectedFoodVendor : null,
+        };
+      }
+      return {
+        ...prev,
+        foodItems: prev.foodItems.map((i) => (i.id === id ? { ...i, ...itemPatch } : i)),
+      };
+    });
   }, []);
 
   const removeFoodItem = React.useCallback((id: string) => {
@@ -224,40 +259,13 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const syncFoodCartFromStorage = React.useCallback(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const savedCart = localStorage.getItem('food_cart');
-      const savedShop = localStorage.getItem('food_cart_shop');
-      if (!savedCart) return;
-
-      const entries: [string, { item: { id: string; name: string; price: number }; quantity: number }][] =
-        JSON.parse(savedCart);
-      const foodItems: CartFoodItem[] = entries.map(([, cartItem]) => ({
-        id: cartItem.item.id,
-        name: cartItem.item.name,
-        quantity: cartItem.quantity,
-        unitPrice: cartItem.item.price,
-      }));
-
-      let selectedFoodVendor: PickupStore | null = null;
-      if (savedShop) {
-        const shop = JSON.parse(savedShop) as { id: string; name: string; address?: string };
-        selectedFoodVendor = {
-          category: 'food',
-          vendorId: shop.id,
-          vendorName: shop.name,
-          address: shop.address,
-        };
-      }
-
-      setState((prev) => ({
-        ...prev,
-        foodItems,
-        selectedFoodVendor: selectedFoodVendor ?? prev.selectedFoodVendor,
-      }));
-    } catch {
-      // ignore invalid localStorage
-    }
+    const imported = importFoodCartFromStorage();
+    if (!imported) return;
+    setState((prev) => ({
+      ...prev,
+      foodItems: imported.foodItems,
+      selectedFoodVendor: imported.selectedFoodVendor,
+    }));
   }, []);
 
   const setRouteOptions = React.useCallback((options: RouteOption[]) => {
