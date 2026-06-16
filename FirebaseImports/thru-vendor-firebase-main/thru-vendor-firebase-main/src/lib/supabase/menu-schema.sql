@@ -39,6 +39,14 @@ create policy "menu_items_service_role_all"
 
 -- Optional staging bucket for legacy PDF uploads (app now posts PDFs directly to the API)
 -- Menu item photos are stored in the vendor-images bucket: menu_item_images/{vendor_id}/{item_id}.{ext}
+
+-- Custom menu category names per vendor (merged with categories used on menu_items)
+alter table public.vendors
+  add column if not exists menu_categories jsonb not null default '[]'::jsonb;
+
+comment on column public.vendors.menu_categories is
+  'Ordered list of custom menu section names for the vendor menu management UI.';
+
 insert into storage.buckets (id, name, public)
 values ('vendor-menu-pdfs', 'vendor-menu-pdfs', false)
 on conflict (id) do nothing;

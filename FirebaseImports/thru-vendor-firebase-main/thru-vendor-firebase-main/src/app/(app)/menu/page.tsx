@@ -14,15 +14,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { MenuItem } from '@/lib/supabase'
-import { Plus, Edit, Trash2, Loader2, UploadCloud, Camera, X, AlertTriangle, ImageIcon } from 'lucide-react'
+import { Plus, Edit, Trash2, Loader2, UploadCloud, Camera, X, AlertTriangle, ImageIcon, FolderOpen, Pencil } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useSession } from '@/hooks/use-session'
 import { isMenuUploadEnabled } from '@/lib/vendor-features'
@@ -34,23 +27,19 @@ import {
 import Link from 'next/link'
 import { MenuItemImageUpload } from '@/components/menu/MenuItemImageUpload'
 import { MenuBulkPhotoDialog } from '@/components/menu/MenuBulkPhotoDialog'
+import { MenuCategorySelect } from '@/components/menu/MenuCategorySelect'
+import { ManageCategoriesDialog } from '@/components/menu/ManageCategoriesDialog'
 import { Checkbox } from '@/components/ui/checkbox'
 
 // Fallback vendor ID for local testing (real session ID overrides this)
 const VENDOR_ID = '8c027b0f-394c-4c3e-a20c-56ad675366d2'
 const MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024
 
-const CATEGORIES = [
-  'Starters',
-  'Mains',
-  'Desserts',
-  'Drinks',
-  'Snacks',
-  'Breakfast',
-  'Lunch',
-  'Dinner',
-  'Other'
-]
+function uniqueSortedCategories(names: string[]): string[] {
+  return [...new Set(names.map((n) => n.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  )
+}
 
 type MenuPagePhoto = {
   id: string
@@ -98,6 +87,9 @@ export default function MenuPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isBulkPhotoDialogOpen, setIsBulkPhotoDialogOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [categoryNames, setCategoryNames] = useState<string[]>([])
+  const [isManageCategoriesOpen, setIsManageCategoriesOpen] = useState(false)
+  const [categoryToEdit, setCategoryToEdit] = useState<string | null>(null)
 
   useEffect(() => {
     if (sessionLoading) return
@@ -106,7 +98,42 @@ export default function MenuPage() {
       return
     }
     loadMenuItems()
+    loadCategories()
   }, [sessionLoading, activeVendorId])
+
+  const loadCategories = async () => {
+    try {
+      const response = await fetch('/api/menu/categories')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'Failed to load categories')
+      }
+      const payload = await response.json()
+      setCategoryNames(payload.categories ?? [])
+    } catch (error) {
+      console.error('Error loading menu categories:', error)
+    }
+  }
+
+  const ensureCategorySaved = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    if (categoryNames.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return
+
+    try {
+      const response = await fetch('/api/menu/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      if (response.ok) {
+        const payload = await response.json()
+        setCategoryNames(payload.categories ?? [])
+      }
+    } catch {
+      // Non-blocking; categories still appear from menu items after reload.
+    }
+  }
 
   useEffect(() => {
     if (!isUploadDialogOpen) {
@@ -410,7 +437,7 @@ export default function MenuPage() {
         name: formData.name,
         description: formData.description || null,
         price: parseFloat(formData.price),
-        category: formData.category || null,
+        category: formData.category.trim() || null,
         image_url: formData.image_url || null,
         is_veg: formData.is_veg,
         is_available: formData.is_available,
@@ -449,7 +476,11 @@ export default function MenuPage() {
 
       setIsDialogOpen(false)
       resetForm()
+      if (itemData.category) {
+        await ensureCategorySaved(itemData.category)
+      }
       loadMenuItems()
+      loadCategories()
     } catch (error) {
       console.error('Error saving menu item:', error)
       toast({
@@ -611,12 +642,22 @@ export default function MenuPage() {
   const handleBulkPhotosComplete = async () => {
     clearSelection()
     await loadMenuItems()
+    await loadCategories()
   }
 
-  const groupedItems = menuItems.reduce((acc, item) => {
-    const category = item.category || 'Other'
-    if (!acc[category]) acc[category] = []
-    acc[category].push(item)
+  const itemCounts = menuItems.reduce((acc, item) => {
+    const category = item.category?.trim() || 'Other'
+    acc[category] = (acc[category] ?? 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  const displayCategories = uniqueSortedCategories([
+    ...categoryNames,
+    ...Object.keys(itemCounts),
+  ])
+
+  const groupedItems = displayCategories.reduce((acc, category) => {
+    acc[category] = menuItems.filter((item) => (item.category?.trim() || 'Other') === category)
     return acc
   }, {} as Record<string, MenuItem[]>)
 
@@ -641,6 +682,17 @@ export default function MenuPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold">Menu Management</h1>
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setCategoryToEdit(null)
+              setIsManageCategoriesOpen(true)
+            }}
+          >
+            <FolderOpen className="mr-2 h-4 w-4" />
+            Manage Categories
+          </Button>
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open)
             if (!open) resetForm()
@@ -688,24 +740,11 @@ export default function MenuPage() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="category">Category</Label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <MenuCategorySelect
+                  value={formData.category}
+                  categories={displayCategories}
+                  onChange={(value) => setFormData({ ...formData, category: value })}
+                />
 
                 <MenuItemImageUpload
                   key={editingItem?.id ?? 'new'}
@@ -1058,6 +1097,24 @@ export default function MenuPage() {
             onComplete={handleBulkPhotosComplete}
           />
 
+          <ManageCategoriesDialog
+            open={isManageCategoriesOpen}
+            onOpenChange={(open) => {
+              setIsManageCategoriesOpen(open)
+              if (!open) {
+                setCategoryToEdit(null)
+                void loadMenuItems()
+              }
+            }}
+            categories={displayCategories}
+            itemCounts={itemCounts}
+            initialEditCategory={categoryToEdit}
+            onCategoriesChange={(categories) => {
+              setCategoryNames(categories)
+              void loadMenuItems()
+            }}
+          />
+
           {Object.entries(groupedItems).map(([category, items]) => {
             const categorySelectedCount = items.filter((item) => selectedIds.has(item.id)).length
             const allCategorySelected =
@@ -1065,9 +1122,24 @@ export default function MenuPage() {
 
             return (
             <Card key={category}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>{category}</CardTitle>
-                <div className="flex items-center gap-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CardTitle className="truncate">{category}</CardTitle>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => {
+                      setCategoryToEdit(category)
+                      setIsManageCategoriesOpen(true)
+                    }}
+                    title="Rename category"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
                   <Checkbox
                     id={`select-category-${category}`}
                     checked={allCategorySelected}
@@ -1085,7 +1157,32 @@ export default function MenuPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {items.map((item) => (
+                  {items.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      No items in this category yet.{' '}
+                      <button
+                        type="button"
+                        className="text-primary underline-offset-4 hover:underline"
+                        onClick={() => {
+                          setEditingItem(null)
+                          setFormData({
+                            name: '',
+                            description: '',
+                            price: '',
+                            category,
+                            image_url: '',
+                            is_veg: false,
+                            is_available: true,
+                            preparation_time: '',
+                          })
+                          setIsDialogOpen(true)
+                        }}
+                      >
+                        Add an item
+                      </button>
+                    </div>
+                  ) : (
+                  items.map((item) => (
                     <div
                       key={item.id}
                       className={`flex items-center justify-between p-4 border rounded-lg gap-3 ${
@@ -1162,7 +1259,8 @@ export default function MenuPage() {
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  ))
+                  )}
                 </div>
               </CardContent>
             </Card>
