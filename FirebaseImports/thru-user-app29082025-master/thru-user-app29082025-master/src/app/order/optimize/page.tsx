@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { RouteOptionsPicker } from '@/components/order/RouteOptionsPicker';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
-import { routeBasedShopDiscovery } from '@/lib/route-based-shop-discovery';
+import { findRouteShopsWithFallback } from '@/lib/route-shop-search';
+import type { RouteShopSearchTier } from '@/lib/route-shop-search';
 import { buildRouteOptions } from '@/lib/route-options-optimizer';
-import { AUTO_DETOUR_KM } from '@/types/order-flow';
 
 function parseEndpoints(start: string | null, dest: string | null) {
   const parse = (str: string) => {
@@ -37,6 +37,7 @@ export default function OrderOptimizePage() {
 
   const [loading, setLoading] = React.useState(true);
   const [searchComplete, setSearchComplete] = React.useState(false);
+  const [searchTier, setSearchTier] = React.useState<RouteShopSearchTier>('none');
 
   React.useEffect(() => {
     let cancelled = false;
@@ -48,6 +49,7 @@ export default function OrderOptimizePage() {
       const endpoints = parseEndpoints(selectedStartLocation, selectedDestination);
       if (!endpoints) {
         if (!cancelled) {
+          setSearchTier('none');
           setRouteOptions([]);
           setLoading(false);
           setSearchComplete(true);
@@ -55,19 +57,15 @@ export default function OrderOptimizePage() {
         return;
       }
 
-      const storeTypes = categories.includes('food')
-        ? (['grocery', 'supermarket', 'restaurant', 'cafe'] as const)
-        : (['grocery', 'supermarket'] as const);
-
       try {
-        const result = await routeBasedShopDiscovery.findShopsAlongRoute(
+        const { shops, tier } = await findRouteShopsWithFallback(
           endpoints.start,
           endpoints.end,
-          AUTO_DETOUR_KM,
-          storeTypes as any
+          categories
         );
         if (cancelled) return;
-        const options = buildRouteOptions(result.shops, groceryItems);
+        setSearchTier(tier);
+        const options = buildRouteOptions(shops, groceryItems, tier);
         setRouteOptions(options);
         if (options[0]) {
           selectRouteOption(options[0].id);
@@ -76,6 +74,7 @@ export default function OrderOptimizePage() {
         }
       } catch {
         if (!cancelled) {
+          setSearchTier('none');
           setRouteOptions([]);
           selectRouteOption('');
         }
@@ -104,7 +103,11 @@ export default function OrderOptimizePage() {
 
   return (
     <div className="space-y-8">
-      <RouteOptionsPicker loading={loading} searchComplete={searchComplete} />
+      <RouteOptionsPicker
+        loading={loading}
+        searchComplete={searchComplete}
+        searchTier={searchTier}
+      />
 
       <div className="flex gap-3">
         <Button

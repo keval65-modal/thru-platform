@@ -23,6 +23,9 @@ const FOOD_TYPE_TOKENS = new Set([
   'pub',
 ]);
 
+const FOOD_NAME_PATTERN =
+  /\b(pizza|bistro|cafe|restaurant|kitchen|diner|grill|bar|pub|bakery|burger|taco|sushi|wok|dhaba|eatery)\b/i;
+
 function normalizeToken(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, ' ');
 }
@@ -56,7 +59,35 @@ export function resolveCanonicalStoreType(
     return 'grocery';
   }
 
+  if (FOOD_NAME_PATTERN.test(name)) {
+    return 'restaurant';
+  }
+
   return (typeNorm || 'other') as StoreType | 'other';
+}
+
+export function isFoodStoreType(
+  rawType?: string | null,
+  categories: string[] = [],
+  name = ''
+): boolean {
+  const canonical = resolveCanonicalStoreType(rawType, categories, name);
+  const norm = normalizeToken(String(canonical)).replace(/\s+/g, '_');
+  return FOOD_TYPE_TOKENS.has(norm) || FOOD_NAME_PATTERN.test(name);
+}
+
+export function isGroceryStoreType(
+  rawType?: string | null,
+  categories: string[] = [],
+  name = ''
+): boolean {
+  if (isFoodStoreType(rawType, categories, name)) return false;
+  const canonical = resolveCanonicalStoreType(rawType, categories, name);
+  if (canonical === 'grocery' || canonical === 'supermarket') return true;
+  if (canonical === 'other' && /\b(shop|mart|store|shoppee|super|kirana|provision)\b/i.test(name)) {
+    return true;
+  }
+  return false;
 }
 
 export function shopMatchesStoreTypes(
@@ -69,14 +100,22 @@ export function shopMatchesStoreTypes(
   );
 
   const canonicalNorm = normalizeToken(String(canonical)).replace(/\s+/g, '_');
+  const groceryRequested = requested.has('grocery') || requested.has('supermarket');
+  const foodRequested = [...FOOD_TYPE_TOKENS].some((t) => requested.has(t));
+
+  if (groceryRequested && !foodRequested && isFoodStoreType(shop.type, shop.categories, shop.name)) {
+    return false;
+  }
+
+  if (foodRequested && !groceryRequested && isGroceryStoreType(shop.type, shop.categories, shop.name)) {
+    return false;
+  }
+
   if (requested.has(canonicalNorm)) return true;
 
   // Grocery list should include general stores / "Other" that are clearly grocery shops.
-  if (requested.has('grocery') || requested.has('supermarket')) {
-    if (canonical === 'grocery') return true;
-    if (canonical === 'other' && /\b(shop|mart|store|shoppee|super|kirana|provision)\b/i.test(shop.name || '')) {
-      return true;
-    }
+  if (groceryRequested) {
+    return isGroceryStoreType(shop.type, shop.categories, shop.name);
   }
 
   return false;

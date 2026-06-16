@@ -4,6 +4,7 @@ import * as React from 'react';
 import Script from 'next/script';
 import { OrderFlowProvider } from '@/contexts/OrderFlowContext';
 import { OrderStepper } from '@/components/order/OrderStepper';
+import { OrderCart } from '@/components/order/OrderCart';
 import BottomNav from '@/components/layout/bottom-nav';
 
 export default function OrderLayout({ children }: { children: React.ReactNode }) {
@@ -24,7 +25,7 @@ export default function OrderLayout({ children }: { children: React.ReactNode })
           strategy="afterInteractive"
         />
       )}
-      <div className="min-h-screen bg-background pb-24">
+      <div className="min-h-screen bg-background pb-36">
         <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/40 px-4 py-3">
           <div className="max-w-lg mx-auto flex items-center gap-3">
             <span className="font-bold text-lg text-primary">Thru</span>
@@ -35,6 +36,7 @@ export default function OrderLayout({ children }: { children: React.ReactNode })
         </header>
         <main className="max-w-lg mx-auto px-4 py-6">{children}</main>
       </div>
+      <OrderCart />
       <BottomNav />
     </OrderFlowProvider>
   );

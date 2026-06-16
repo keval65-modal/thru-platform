@@ -4,9 +4,17 @@ import {
   mockAnalyzePrescription,
 } from '@/ai/flows/analyze-prescription-flow';
 import { isGoogleAiConfigured } from '@/lib/google-ai-config';
-import { prescriptionValidationMessage } from '@/lib/prescription-validation';
+import { prescriptionValidationMessage, prescriptionManualReviewMessage } from '@/lib/prescription-validation';
 
 export const maxDuration = 60;
+
+function manualReviewResponse() {
+  return NextResponse.json({
+    success: false,
+    manualReviewRequired: true,
+    message: prescriptionManualReviewMessage(),
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,13 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isGoogleAiConfigured()) {
-      return NextResponse.json(
-        {
-          error:
-            'Google AI is not configured. Set GOOGLE_AI_API_KEY or GENKIT_GOOGLE_AI_API_KEY in your environment.',
-        },
-        { status: 503 }
-      );
+      return manualReviewResponse();
     }
 
     if (!imageDataUri?.startsWith('data:image/')) {
@@ -42,6 +44,10 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await analyzePrescriptionImage({ imageDataUri });
+
+    if (!result.medicinesWithIds.length) {
+      return manualReviewResponse();
+    }
 
     return NextResponse.json({
       success: true,
@@ -55,7 +61,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[analyze-prescription]', error);
-    const message = error instanceof Error ? error.message : 'Analysis failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return manualReviewResponse();
   }
 }

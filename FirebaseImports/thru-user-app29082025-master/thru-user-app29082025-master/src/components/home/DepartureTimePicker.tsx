@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { Clock3, Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,21 +11,24 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AnalogClockPicker } from '@/components/home/AnalogClockPicker';
 import {
   formatTime24h,
   formatTime24hInput,
+  formatTimeForDisplay,
+  formatTimeInputValue,
   isScheduledTimeInPast,
+  loadDepartureTimeFormat,
+  meridiemFromHours24,
   nextValidDepartureParts,
+  parseTime12h,
   parseTime24h,
   PAST_DEPARTURE_TIME_MESSAGE,
+  saveDepartureTimeFormat,
   time24hFromDateString,
+  type Meridiem,
+  type TimeFormatPreference,
 } from '@/lib/departure-time';
-
-const PREFERENCE_KEY = 'thru-departure-time-picker-mode';
-
-type PickerMode = 'clock' | 'text';
+import { cn } from '@/lib/utils';
 
 type Props = {
   open: boolean;
@@ -36,50 +38,36 @@ type Props = {
 };
 
 export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Props) {
-  const [mode, setMode] = React.useState<PickerMode>('clock');
+  const [format, setFormat] = React.useState<TimeFormatPreference>('12');
   const [hours, setHours] = React.useState(8);
   const [minutes, setMinutes] = React.useState(0);
-  const [activeHand, setActiveHand] = React.useState<'hour' | 'minute'>('hour');
+  const [meridiem, setMeridiem] = React.useState<Meridiem>('AM');
   const [textValue, setTextValue] = React.useState('08:00');
   const [textError, setTextError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
 
-    const stored = typeof window !== 'undefined'
-      ? (localStorage.getItem(PREFERENCE_KEY) as PickerMode | null)
-      : null;
-    if (stored === 'clock' || stored === 'text') {
-      setMode(stored);
-    }
+    const savedFormat = loadDepartureTimeFormat();
+    setFormat(savedFormat);
 
     const parsedValue = time24hFromDateString(value);
     const fromValue =
       parsedValue && !isScheduledTimeInPast(parsedValue.hours, parsedValue.minutes)
         ? parsedValue
         : nextValidDepartureParts();
+
     setHours(fromValue.hours);
     setMinutes(fromValue.minutes);
-    setTextValue(formatTime24h(fromValue.hours, fromValue.minutes));
+    setMeridiem(meridiemFromHours24(fromValue.hours));
+    setTextValue(formatTimeInputValue(fromValue.hours, fromValue.minutes, savedFormat));
     setTextError(null);
-    setActiveHand('hour');
   }, [open, value]);
 
-  const handleModeChange = (next: string) => {
-    if (next !== 'clock' && next !== 'text') return;
-    setMode(next);
-    localStorage.setItem(PREFERENCE_KEY, next);
-
-    if (next === 'text') {
-      setTextValue(formatTime24h(hours, minutes));
-      setTextError(null);
-    }
-  };
-
-  const handleClockChange = (nextHours: number, nextMinutes: number) => {
-    setHours(nextHours);
-    setMinutes(nextMinutes);
-    setTextValue(formatTime24h(nextHours, nextMinutes));
+  const handleFormatChange = (next: TimeFormatPreference) => {
+    setFormat(next);
+    saveDepartureTimeFormat(next);
+    setTextValue(formatTimeInputValue(hours, minutes, next));
     setTextError(null);
   };
 
@@ -88,7 +76,18 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
     setTextValue(formatted);
     setTextError(null);
 
-    const parsed = parseTime24h(formatted);
+    const parsed =
+      format === '24' ? parseTime24h(formatted) : parseTime12h(formatted, meridiem);
+    if (parsed) {
+      setHours(parsed.hours);
+      setMinutes(parsed.minutes);
+    }
+  };
+
+  const handleMeridiemChange = (next: Meridiem) => {
+    setMeridiem(next);
+    setTextError(null);
+    const parsed = parseTime12h(textValue, next);
     if (parsed) {
       setHours(parsed.hours);
       setMinutes(parsed.minutes);
@@ -96,9 +95,15 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
   };
 
   const handleConfirm = () => {
-    const parsed = parseTime24h(mode === 'text' ? textValue : formatTime24h(hours, minutes));
+    const parsed =
+      format === '24' ? parseTime24h(textValue) : parseTime12h(textValue, meridiem);
+
     if (!parsed) {
-      setTextError('Enter a valid 24-hour time (HH:MM, e.g. 14:30)');
+      setTextError(
+        format === '24'
+          ? 'Enter a valid 24-hour time (HH:MM, e.g. 14:30)'
+          : 'Enter a valid 12-hour time (e.g. 03:30) and choose AM or PM'
+      );
       return;
     }
 
@@ -112,6 +117,7 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
   };
 
   const selectedIsPast = isScheduledTimeInPast(hours, minutes);
+  const confirmLabel = formatTimeForDisplay(hours, minutes, format);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -120,63 +126,94 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
           <DialogTitle>Departure time</DialogTitle>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={handleModeChange}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="clock" className="gap-2">
-              <Clock3 className="h-4 w-4" />
-              Clock
-            </TabsTrigger>
-            <TabsTrigger value="text" className="gap-2">
-              <Keyboard className="h-4 w-4" />
-              Type time
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="clock" className="mt-4 space-y-2">
-            <AnalogClockPicker
-              hours={hours}
-              minutes={minutes}
-              activeHand={activeHand}
-              onActiveHandChange={setActiveHand}
-              onChange={handleClockChange}
-            />
-            {selectedIsPast && (
-              <p className="text-xs text-destructive text-center">{PAST_DEPARTURE_TIME_MESSAGE}</p>
-            )}
-          </TabsContent>
-
-          <TabsContent value="text" className="mt-4 space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="departure-time-24h">24-hour time</Label>
-              <Input
-                id="departure-time-24h"
-                inputMode="numeric"
-                placeholder="HH:MM"
-                value={textValue}
-                onChange={(e) => handleTextChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleConfirm();
-                  }
-                }}
-                className="text-center text-2xl font-semibold tracking-widest tabular-nums h-14"
-                autoComplete="off"
-              />
-              <p className="text-xs text-muted-foreground text-center">
-                Use 24-hour format — e.g. 07:15 for morning, 19:45 for evening
-              </p>
-              {textError && <p className="text-xs text-destructive text-center">{textError}</p>}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Enter departure time</Label>
+            <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-1">
+              <button
+                type="button"
+                onClick={() => handleFormatChange('12')}
+                className={cn(
+                  'rounded-lg py-2 text-sm font-medium transition-colors',
+                  format === '12'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                12-hour
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFormatChange('24')}
+                className={cn(
+                  'rounded-lg py-2 text-sm font-medium transition-colors',
+                  format === '24'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                24-hour
+              </button>
             </div>
-          </TabsContent>
-        </Tabs>
+          </div>
+
+          <div className="space-y-3">
+            <Input
+              id="departure-time-input"
+              inputMode="numeric"
+              placeholder={format === '24' ? 'HH:MM' : 'hh:mm'}
+              value={textValue}
+              onChange={(e) => handleTextChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleConfirm();
+                }
+              }}
+              className="text-center text-2xl font-semibold tracking-widest tabular-nums h-14"
+              autoComplete="off"
+            />
+
+            {format === '12' && (
+              <div className="grid grid-cols-2 gap-2">
+                {(['AM', 'PM'] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => handleMeridiemChange(option)}
+                    className={cn(
+                      'rounded-xl border py-2.5 text-sm font-semibold transition-colors',
+                      meridiem === option
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                    )}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground text-center">
+              {format === '24'
+                ? 'Use 24-hour format — e.g. 07:15 for morning, 19:45 for evening'
+                : 'Use 12-hour format — e.g. 07:15 AM or 07:45 PM'}
+            </p>
+
+            {(textError || selectedIsPast) && (
+              <p className="text-xs text-destructive text-center">
+                {textError ?? PAST_DEPARTURE_TIME_MESSAGE}
+              </p>
+            )}
+          </div>
+        </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button type="button" onClick={handleConfirm} disabled={selectedIsPast}>
-            Set {formatTime24h(hours, minutes)}
+            Set {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

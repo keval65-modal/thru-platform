@@ -10,6 +10,67 @@ export function parseTime24h(input: string): { hours: number; minutes: number } 
   return { hours, minutes };
 }
 
+export type TimeFormatPreference = '12' | '24';
+export type Meridiem = 'AM' | 'PM';
+
+export const DEPARTURE_TIME_FORMAT_KEY = 'thru-departure-time-format';
+
+export function loadDepartureTimeFormat(): TimeFormatPreference {
+  if (typeof window === 'undefined') return '12';
+  const stored = localStorage.getItem(DEPARTURE_TIME_FORMAT_KEY);
+  return stored === '24' ? '24' : '12';
+}
+
+export function saveDepartureTimeFormat(format: TimeFormatPreference): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(DEPARTURE_TIME_FORMAT_KEY, format);
+}
+
+export function formatTime12h(hours24: number, minutes: number): string {
+  let hour12 = hours24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  return `${String(hour12).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+export function meridiemFromHours24(hours24: number): Meridiem {
+  return hours24 >= 12 ? 'PM' : 'AM';
+}
+
+export function parseTime12h(
+  input: string,
+  meridiem: Meridiem
+): { hours: number; minutes: number } | null {
+  const trimmed = input.trim();
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+
+  let hour12 = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  if (hour12 < 1 || hour12 > 12 || minutes < 0 || minutes > 59) return null;
+
+  let hours24 = hour12 % 12;
+  if (meridiem === 'PM') hours24 += 12;
+  return { hours: hours24, minutes };
+}
+
+export function formatTimeForDisplay(
+  hours24: number,
+  minutes: number,
+  format: TimeFormatPreference
+): string {
+  if (format === '24') return formatTime24h(hours24, minutes);
+  return `${formatTime12h(hours24, minutes)} ${meridiemFromHours24(hours24)}`;
+}
+
+export function formatTimeInputValue(
+  hours24: number,
+  minutes: number,
+  format: TimeFormatPreference
+): string {
+  if (format === '24') return formatTime24h(hours24, minutes);
+  return formatTime12h(hours24, minutes);
+}
+
 export function formatTime24h(hours: number, minutes: number): string {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }

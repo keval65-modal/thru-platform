@@ -19,17 +19,21 @@ import { cn } from '@/lib/utils';
 import {
   buildLocalDepartureIso,
   clampScheduledDepartureIso,
+  formatTimeForDisplay,
   isDepartureIsoInPast,
+  loadDepartureTimeFormat,
   nextValidDepartureParts,
   PAST_DEPARTURE_TIME_MESSAGE,
+  time24hFromDateString,
 } from '@/lib/departure-time';
 import type { SavedDestination } from '@/types/saved-destinations';
 
 function formatTimeDisplay(dateString: string) {
   if (!dateString) return 'Pick time';
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return 'Pick time';
-  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const parts = time24hFromDateString(dateString);
+  if (!parts) return 'Pick time';
+  const format = typeof window !== 'undefined' ? loadDepartureTimeFormat() : '12';
+  return formatTimeForDisplay(parts.hours, parts.minutes, format);
 }
 
 function parseCoordString(str: string | null): { lat: number; lng: number } | null {

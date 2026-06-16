@@ -1,7 +1,16 @@
 'use client';
 
 import * as React from 'react';
-import type { GroceryListItem, OrderCategory, OrderFlowState, RouteOption, RouteStop } from '@/types/order-flow';
+import type {
+  CartFoodItem,
+  CartMedicineItem,
+  GroceryListItem,
+  OrderCategory,
+  OrderFlowState,
+  PickupStore,
+  RouteOption,
+  RouteStop,
+} from '@/types/order-flow';
 import {
   defaultOrderFlowState,
   loadOrderFlowState,
@@ -19,6 +28,15 @@ type OrderFlowContextValue = OrderFlowState & {
   addGroceryItem: (item: Omit<GroceryListItem, 'id'>) => void;
   updateGroceryItem: (id: string, patch: Partial<GroceryListItem>) => void;
   removeGroceryItem: (id: string) => void;
+  setFoodItems: (items: CartFoodItem[]) => void;
+  updateFoodItem: (id: string, patch: Partial<CartFoodItem>) => void;
+  removeFoodItem: (id: string) => void;
+  setMedicineItems: (items: CartMedicineItem[]) => void;
+  updateMedicineItem: (id: string, patch: Partial<CartMedicineItem>) => void;
+  removeMedicineItem: (id: string) => void;
+  setSelectedFoodVendor: (vendor: PickupStore | null) => void;
+  setSelectedMedicineVendor: (vendor: PickupStore | null) => void;
+  syncFoodCartFromStorage: () => void;
   setRouteOptions: (options: RouteOption[]) => void;
   selectRouteOption: (id: string) => void;
   patch: (partial: Partial<OrderFlowState>) => void;
@@ -127,6 +145,87 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const setFoodItems = React.useCallback((items: CartFoodItem[]) => {
+    setState((prev) => ({ ...prev, foodItems: items }));
+  }, []);
+
+  const updateFoodItem = React.useCallback((id: string, itemPatch: Partial<CartFoodItem>) => {
+    setState((prev) => ({
+      ...prev,
+      foodItems: prev.foodItems.map((i) => (i.id === id ? { ...i, ...itemPatch } : i)),
+    }));
+  }, []);
+
+  const removeFoodItem = React.useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      foodItems: prev.foodItems.filter((i) => i.id !== id),
+    }));
+  }, []);
+
+  const setMedicineItems = React.useCallback((items: CartMedicineItem[]) => {
+    setState((prev) => ({ ...prev, medicineItems: items }));
+  }, []);
+
+  const updateMedicineItem = React.useCallback((id: string, itemPatch: Partial<CartMedicineItem>) => {
+    setState((prev) => ({
+      ...prev,
+      medicineItems: prev.medicineItems.map((i) => (i.id === id ? { ...i, ...itemPatch } : i)),
+    }));
+  }, []);
+
+  const removeMedicineItem = React.useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      medicineItems: prev.medicineItems.filter((i) => i.id !== id),
+    }));
+  }, []);
+
+  const setSelectedFoodVendor = React.useCallback((vendor: PickupStore | null) => {
+    setState((prev) => ({ ...prev, selectedFoodVendor: vendor }));
+  }, []);
+
+  const setSelectedMedicineVendor = React.useCallback((vendor: PickupStore | null) => {
+    setState((prev) => ({ ...prev, selectedMedicineVendor: vendor }));
+  }, []);
+
+  const syncFoodCartFromStorage = React.useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const savedCart = localStorage.getItem('food_cart');
+      const savedShop = localStorage.getItem('food_cart_shop');
+      if (!savedCart) return;
+
+      const entries: [string, { item: { id: string; name: string; price: number }; quantity: number }][] =
+        JSON.parse(savedCart);
+      const foodItems: CartFoodItem[] = entries.map(([, cartItem]) => ({
+        id: cartItem.item.id,
+        name: cartItem.item.name,
+        quantity: cartItem.quantity,
+        unitPrice: cartItem.item.price,
+      }));
+
+      let selectedFoodVendor: PickupStore | null = null;
+      if (savedShop) {
+        const shop = JSON.parse(savedShop) as { id: string; name: string; address?: string };
+        selectedFoodVendor = {
+          category: 'food',
+          vendorId: shop.id,
+          vendorName: shop.name,
+          address: shop.address,
+        };
+      }
+
+      setState((prev) => ({
+        ...prev,
+        foodItems,
+        selectedFoodVendor: selectedFoodVendor ?? prev.selectedFoodVendor,
+      }));
+    } catch {
+      // ignore invalid localStorage
+    }
+  }, []);
+
   const setRouteOptions = React.useCallback((options: RouteOption[]) => {
     setState((prev) => ({ ...prev, routeOptions: options }));
   }, []);
@@ -152,6 +251,15 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
       addGroceryItem,
       updateGroceryItem,
       removeGroceryItem,
+      setFoodItems,
+      updateFoodItem,
+      removeFoodItem,
+      setMedicineItems,
+      updateMedicineItem,
+      removeMedicineItem,
+      setSelectedFoodVendor,
+      setSelectedMedicineVendor,
+      syncFoodCartFromStorage,
       setRouteOptions,
       selectRouteOption,
       patch,
@@ -169,6 +277,15 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
       addGroceryItem,
       updateGroceryItem,
       removeGroceryItem,
+      setFoodItems,
+      updateFoodItem,
+      removeFoodItem,
+      setMedicineItems,
+      updateMedicineItem,
+      removeMedicineItem,
+      setSelectedFoodVendor,
+      setSelectedMedicineVendor,
+      syncFoodCartFromStorage,
       setRouteOptions,
       selectRouteOption,
       patch,

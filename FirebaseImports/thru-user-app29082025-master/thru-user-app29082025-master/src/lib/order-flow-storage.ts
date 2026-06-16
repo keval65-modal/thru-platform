@@ -22,6 +22,10 @@ export function defaultOrderFlowState(): OrderFlowState {
     isImmediate: true,
     categories: [],
     groceryItems: [],
+    foodItems: [],
+    medicineItems: [],
+    selectedFoodVendor: null,
+    selectedMedicineVendor: null,
     selectedRouteOptionId: null,
     routeOptions: [],
   };

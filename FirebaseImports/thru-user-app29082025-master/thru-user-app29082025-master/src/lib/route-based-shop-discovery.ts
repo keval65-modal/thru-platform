@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 import { SupabaseVendorService } from './supabase/vendor-service'
-import { shopMatchesStoreTypes } from './vendor-store-types'
+import { shopMatchesStoreTypes, resolveCanonicalStoreType } from './vendor-store-types'
 import { operatingHoursFromVendorFields } from '@/utils/operating-hours'
 import { StoreType, StoreCapabilities } from '@/types/grocery-advanced'
 
@@ -143,13 +143,17 @@ export class RouteBasedShopDiscovery {
         const shopLng = vendor.location?.longitude
 
         if (shopLat && shopLng) {
-          // ✅ USE store_type from Supabase directly, don't derive from categories!
-          const storeType = (vendor.storeType || 'grocery') as StoreType
-          
+          const canonical = resolveCanonicalStoreType(
+            vendor.storeType,
+            vendor.categories || [],
+            vendor.name || ''
+          );
+          const storeType = (canonical === 'other' ? 'other' : canonical) as StoreType;
+
           shops.push({
             id: vendor.id,
             name: vendor.name || 'Unknown Shop',
-            type: storeType, // ✅ Use the actual store_type from database
+            type: storeType,
             imageUrl: vendor.imageUrl,
             coordinates: { lat: shopLat, lng: shopLng },
             address: vendor.address || 'Address not available',
@@ -281,7 +285,7 @@ export class RouteBasedShopDiscovery {
             distanceFromRoute: distanceFromLine,
             detourDistance: distanceFromLine,
             routePosition: routePosition,
-            estimatedTime: Math.round(distanceFromStart * 3), // ~3 min per km
+            estimatedTime: Math.round((distanceFromStart / 1000) * 3), // ~3 min per km
             isOnRoute: distanceFromLine <= 1 // Within 1km is "on route"
           }
         })
@@ -381,7 +385,7 @@ export class RouteBasedShopDiscovery {
             distanceFromRoute: distanceFromLine,
             detourDistance: distanceFromLine,
             routePosition: routePosition,
-            estimatedTime: Math.round(distanceFromStart * 3),
+            estimatedTime: Math.round((distanceFromStart / 1000) * 3),
             isOnRoute: distanceFromLine <= 1
           }
         })

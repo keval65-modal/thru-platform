@@ -1,5 +1,6 @@
 import type { GroceryListItem, RouteOption } from '@/types/order-flow';
 import type { RouteBasedShop } from '@/lib/route-based-shop-discovery';
+import type { RouteShopSearchTier } from '@/lib/route-shop-search';
 
 function estimateGroceryTotal(items: GroceryListItem[]): number {
   return items.reduce((sum, item) => {
@@ -8,58 +9,82 @@ function estimateGroceryTotal(items: GroceryListItem[]): number {
   }, 0);
 }
 
-function minutesFromShop(shop: RouteBasedShop): number {
-  if (shop.estimatedTime > 0) return Math.round(shop.estimatedTime);
-  return Math.max(1, Math.round(shop.detourDistance * 3));
+/** ~500 m from the driving line counts as on the user's path */
+const ON_PATH_KM = 0.5;
+
+export function isShopOnPath(shop: RouteBasedShop): boolean {
+  return (
+    shop.isOnRoute ||
+    shop.distanceFromRoute <= ON_PATH_KM ||
+    shop.detourDistance <= ON_PATH_KM
+  );
+}
+
+/** Extra minutes from detour distance — not total drive time from start. */
+export function detourMinutesFromShop(shop: RouteBasedShop): number {
+  if (isShopOnPath(shop)) return 0;
+  const fromDetour = Math.max(1, Math.round(shop.detourDistance * 3));
+  return Math.min(30, fromDetour);
+}
+
+export function routeTimingLabel(shop: RouteBasedShop): string {
+  if (isShopOnPath(shop)) return 'On your path';
+  const mins = detourMinutesFromShop(shop);
+  if (mins <= 5) return `~${mins} min off route`;
+  return `+${mins} min detour`;
+}
+
+export function streetFromAddress(address: string | undefined): string {
+  if (!address || address === 'Address not available') return '';
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+  return parts.slice(0, 2).join(', ');
 }
 
 /**
- * Build 3 route options ranked by time vs price — detour km is internal only.
+ * One card per shop on the route — first entry is the suggested stop.
  */
 export function buildRouteOptions(
   shops: RouteBasedShop[],
   groceryItems: GroceryListItem[],
-  baselineMinutes = 0
+  searchTier: RouteShopSearchTier = 'on_route'
 ): RouteOption[] {
-  if (shops.length === 0) {
-    return [];
-  }
+  if (shops.length === 0) return [];
 
-  const sorted = [...shops].sort((a, b) => a.detourDistance - b.detourDistance);
+  const sorted = [...shops].sort((a, b) => {
+    if (a.isOnRoute !== b.isOnRoute) return a.isOnRoute ? -1 : 1;
+    if (a.detourDistance !== b.detourDistance) return a.detourDistance - b.detourDistance;
+    return a.routePosition - b.routePosition;
+  });
+
   const basePrice = estimateGroceryTotal(groceryItems);
 
-  const picks = [
-    sorted[0],
-    sorted[Math.min(1, sorted.length - 1)],
-    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length / 2))],
-  ];
-
-  const uniquePicks = Array.from(new Map(picks.map((s) => [s.id, s])).values())
-    .filter((shop) => Boolean(shop?.id))
-    .slice(0, 3);
-
-  if (uniquePicks.length === 0) return [];
-
-  return uniquePicks.map((shop, index) => {
-    const added = minutesFromShop(shop);
-    const priceVariance = index * 0.04;
-    const totalPrice = Math.round(basePrice * (1 + priceVariance));
-    const savings = Math.max(0, Math.round(basePrice * (0.12 - index * 0.03)));
+  return sorted.map((shop, index) => {
+    const streetName = streetFromAddress(shop.address);
+    const isSuggested = index === 0;
+    const onPath = isShopOnPath(shop);
+    const addedMinutes = onPath ? 0 : detourMinutesFromShop(shop);
+    const timingLabel = routeTimingLabel(shop);
+    const savings = isSuggested
+      ? Math.max(0, Math.round(basePrice * 0.12))
+      : Math.max(0, Math.round(basePrice * Math.max(0.03, 0.1 - index * 0.02)));
 
     return {
-      id: `opt-${String.fromCharCode(65 + index)}`,
-      label: `Option ${String.fromCharCode(65 + index)}`,
-      totalPrice,
-      savings,
-      addedMinutes: Math.max(added, baselineMinutes + index * 2),
+      id: shop.id,
+      label: shop.name,
       shopIds: [shop.id],
       shopNames: [shop.name],
-      description:
-        index === 0
-          ? `Fastest stop — ${shop.name}`
-          : index === 1
-          ? `Best balance — ${shop.name}`
-          : `Best value — ${shop.name}`,
+      shopAddress: shop.address,
+      streetName,
+      isSuggested,
+      isOnRoute: onPath,
+      isOnPath: onPath,
+      timingLabel,
+      totalPrice: basePrice,
+      savings,
+      addedMinutes,
+      description: streetName || shop.address,
     };
   });
 }

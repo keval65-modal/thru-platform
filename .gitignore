@@ -50,3 +50,4 @@ apphosting.yaml
 
 # Cursor / local assets (optional workspace noise)
 assets/
+.vercel

@@ -25,6 +25,7 @@ const PrescriptionSchema = z.object({
   dateValid: z.boolean().optional(),
   doctorName: z.string().optional(),
   aiRawNotes: z.string().optional(),
+  requiresManualReview: z.boolean().optional(),
   medicines: z.array(z.any()).optional(),
 }).optional().nullable()
 

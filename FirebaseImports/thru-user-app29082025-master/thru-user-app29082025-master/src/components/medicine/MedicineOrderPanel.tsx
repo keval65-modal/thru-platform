@@ -17,13 +17,20 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import {
   buildOrderId,
+  formatMedicineLineDetails,
   generateMedicineLineId,
   type ParsedMedicineLine,
   type PrescriptionMetadata,
 } from '@/lib/prescription-types';
-import { prescriptionValidationMessage } from '@/lib/prescription-validation';
+import { prescriptionValidationMessage, prescriptionManualReviewMessage } from '@/lib/prescription-validation';
 import { Camera, Loader2, Plus, Trash2, Pill, Upload, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { routeBasedShopDiscovery } from '@/lib/route-based-shop-discovery';
+import { MedicineQuantitySuggestions } from '@/components/medicine/MedicineQuantitySuggestions';
+import type {
+  MedicineDosageSuggestion,
+  MedicineQuantitySuggestion,
+} from '@/lib/medicine-quantity-search';
+import { useOrderFlow } from '@/contexts/OrderFlowContext';
 
 type PharmacyShop = {
   id: string;
@@ -48,6 +55,7 @@ export function MedicineOrderPanel({
 }: Props) {
   const router = useRouter();
   const { toast } = useToast();
+  const { setMedicineItems, setSelectedMedicineVendor } = useOrderFlow();
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const [imagePreview, setImagePreview] = React.useState<string | null>(null);
@@ -57,8 +65,11 @@ export function MedicineOrderPanel({
   const [doctorName, setDoctorName] = React.useState('');
   const [dateValid, setDateValid] = React.useState<boolean | null>(null);
   const [medicines, setMedicines] = React.useState<ParsedMedicineLine[]>([]);
+  const [requiresManualReview, setRequiresManualReview] = React.useState(false);
   const [manualName, setManualName] = React.useState('');
   const [manualQty, setManualQty] = React.useState(1);
+  const [manualStrength, setManualStrength] = React.useState<string | undefined>();
+  const [manualPackLabel, setManualPackLabel] = React.useState<string | undefined>();
   const [pharmacies, setPharmacies] = React.useState<PharmacyShop[]>([]);
   const [selectedVendorId, setSelectedVendorId] = React.useState('');
   const [loadingShops, setLoadingShops] = React.useState(false);
@@ -104,6 +115,30 @@ export function MedicineOrderPanel({
     };
   }, [startCoords, destCoords, tripStartLabel, tripDestLabel]);
 
+  React.useEffect(() => {
+    setMedicineItems(
+      medicines.map((m) => ({
+        id: m.id,
+        name: m.name,
+        dosage: m.dosage,
+        quantity: m.quantity,
+        unitPrice: 0,
+      }))
+    );
+  }, [medicines, setMedicineItems]);
+
+  React.useEffect(() => {
+    const vendor = pharmacies.find((p) => p.id === selectedVendorId);
+    if (vendor) {
+      setSelectedMedicineVendor({
+        category: 'medicine',
+        vendorId: vendor.id,
+        vendorName: vendor.name,
+        address: vendor.address,
+      });
+    }
+  }, [selectedVendorId, pharmacies, setSelectedMedicineVendor]);
+
   const readFileAsDataUri = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -111,6 +146,14 @@ export function MedicineOrderPanel({
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+
+  const enterManualReviewMode = () => {
+    setRequiresManualReview(true);
+    setPrescriptionDate('');
+    setDoctorName('');
+    setDateValid(null);
+    setMedicines([]);
+  };
 
   const handleImageSelected = async (file: File | null) => {
     if (!file) return;
@@ -120,6 +163,11 @@ export function MedicineOrderPanel({
     }
     const dataUri = await readFileAsDataUri(file);
     setImagePreview(dataUri);
+    setRequiresManualReview(false);
+    setPrescriptionDate('');
+    setDoctorName('');
+    setDateValid(null);
+    setMedicines([]);
     setAnalyzing(true);
     try {
       const res = await fetch('/api/ai/analyze-prescription', {
@@ -128,6 +176,16 @@ export function MedicineOrderPanel({
         body: JSON.stringify({ imageDataUri: dataUri }),
       });
       const data = await res.json();
+
+      if (data.manualReviewRequired) {
+        enterManualReviewMode();
+        toast({
+          title: 'Prescription uploaded',
+          description: data.message ?? prescriptionManualReviewMessage(),
+        });
+        return;
+      }
+
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
 
       setPrescriptionDate(data.prescriptionDate ?? '');
@@ -141,20 +199,53 @@ export function MedicineOrderPanel({
           quantity: m.quantity,
         }))
       );
+
+      if (!data.medicines?.length) {
+        enterManualReviewMode();
+        toast({
+          title: 'Prescription uploaded',
+          description: prescriptionManualReviewMessage(),
+        });
+        return;
+      }
+
       toast({
         title: data.mock ? 'Demo prescription parsed' : 'Prescription analyzed',
         description: data.validationMessage,
         variant: data.dateValid ? 'default' : 'destructive',
       });
-    } catch (e) {
+    } catch {
+      enterManualReviewMode();
       toast({
-        variant: 'destructive',
-        title: 'Could not read prescription',
-        description: e instanceof Error ? e.message : 'Try again or add medicines manually.',
+        title: 'Prescription uploaded',
+        description: prescriptionManualReviewMessage(),
       });
     } finally {
       setAnalyzing(false);
     }
+  };
+
+  const applyStrengthSuggestion = (
+    id: string | 'manual',
+    suggestion: MedicineDosageSuggestion
+  ) => {
+    if (id === 'manual') {
+      setManualStrength(suggestion.label);
+      return;
+    }
+    updateMedicine(id, { strength: suggestion.label });
+  };
+
+  const applyPackSuggestion = (
+    id: string | 'manual',
+    suggestion: MedicineQuantitySuggestion
+  ) => {
+    if (id === 'manual') {
+      setManualQty(suggestion.quantity);
+      setManualPackLabel(suggestion.label);
+      return;
+    }
+    updateMedicine(id, { quantity: suggestion.quantity, packSize: suggestion.label });
   };
 
   const addManualMedicine = () => {
@@ -162,10 +253,18 @@ export function MedicineOrderPanel({
     if (!name) return;
     setMedicines((prev) => [
       ...prev,
-      { id: generateMedicineLineId(), name, quantity: Math.max(1, manualQty) },
+      {
+        id: generateMedicineLineId(),
+        name,
+        quantity: Math.max(1, manualQty),
+        strength: manualStrength,
+        packSize: manualPackLabel,
+      },
     ]);
     setManualName('');
     setManualQty(1);
+    setManualStrength(undefined);
+    setManualPackLabel(undefined);
   };
 
   const updateMedicine = (id: string, patch: Partial<ParsedMedicineLine>) => {
@@ -177,11 +276,11 @@ export function MedicineOrderPanel({
   };
 
   const canPlaceOrder =
-    dateValid === true &&
-    medicines.length > 0 &&
+    Boolean(imagePreview) &&
     selectedVendorId &&
     startCoords &&
-    destCoords;
+    destCoords &&
+    (requiresManualReview || (dateValid === true && medicines.length > 0));
 
   const placeOrder = async () => {
     if (!canPlaceOrder) {
@@ -189,9 +288,11 @@ export function MedicineOrderPanel({
         variant: 'destructive',
         title: 'Cannot place order',
         description:
-          dateValid !== true
-            ? prescriptionValidationMessage(false)
-            : 'Add medicines and select a pharmacy.',
+          !imagePreview
+            ? 'Upload a prescription image first.'
+            : !requiresManualReview && dateValid !== true
+              ? prescriptionValidationMessage(false)
+              : 'Select a pharmacy on your route.',
       });
       return;
     }
@@ -204,20 +305,35 @@ export function MedicineOrderPanel({
 
     const prescription: PrescriptionMetadata = {
       imageDataUri: imagePreview ?? undefined,
-      prescriptionDate,
-      dateValid: true,
+      prescriptionDate: requiresManualReview ? undefined : prescriptionDate,
+      dateValid: requiresManualReview ? undefined : true,
       doctorName: doctorName || undefined,
+      requiresManualReview,
+      aiRawNotes: requiresManualReview
+        ? 'Automatic reading unavailable — pharmacy to review prescription image.'
+        : undefined,
       medicines,
     };
 
-    const orderItems = medicines.map((m) => ({
-      itemId: m.id,
-      name: m.name,
-      quantity: m.quantity,
-      pricePerItem: 0,
-      totalPrice: 0,
-      details: m.dosage ? `Dosage: ${m.dosage}` : 'Awaiting pharmacy pricing',
-    }));
+    const orderItems = requiresManualReview
+      ? [
+          {
+            itemId: 'rx_manual_review',
+            name: 'Prescription — pharmacy to confirm medicines',
+            quantity: 1,
+            pricePerItem: 0,
+            totalPrice: 0,
+            details: 'Prescription image attached. Pharmacy partner will read and quote medicines.',
+          },
+        ]
+      : medicines.map((m) => ({
+          itemId: m.id,
+          name: m.name,
+          quantity: m.quantity,
+          pricePerItem: 0,
+          totalPrice: 0,
+          details: formatMedicineLineDetails(m),
+        }));
 
     const payload = {
       orderId,
@@ -260,7 +376,9 @@ export function MedicineOrderPanel({
 
       toast({
         title: 'Medicine order placed',
-        description: `Order ${orderId} sent to ${vendor.name}. Await pharmacy quote.`,
+        description: requiresManualReview
+          ? `Order ${orderId} sent to ${vendor.name}. The pharmacy will review your prescription and confirm medicines.`
+          : `Order ${orderId} sent to ${vendor.name}. Await pharmacy quote.`,
       });
       router.push(`/order-tracking/${orderId}`);
     } catch (e) {
@@ -328,7 +446,14 @@ export function MedicineOrderPanel({
         />
       )}
 
-      {dateValid !== null && (
+      {requiresManualReview && (
+        <div className="flex items-start gap-2 text-sm rounded-md p-3 border bg-amber-50 border-amber-200 text-amber-950">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          <p className="font-medium">{prescriptionManualReviewMessage()}</p>
+        </div>
+      )}
+
+      {dateValid !== null && !requiresManualReview && (
         <div
           className={`flex items-start gap-2 text-sm rounded-md p-3 border ${
             dateValid ? 'bg-green-50 border-green-200 text-green-900' : 'bg-red-50 border-red-200 text-red-900'
@@ -350,52 +475,94 @@ export function MedicineOrderPanel({
       )}
 
       {medicines.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Label>Medicines</Label>
           {medicines.map((m) => (
-            <div key={m.id} className="flex flex-wrap gap-2 items-center border rounded-md p-2">
-              <Input
-                className="flex-1 min-w-[140px]"
-                value={m.name}
-                onChange={(e) => updateMedicine(m.id, { name: e.target.value })}
+            <div key={m.id} className="space-y-2 border rounded-md p-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                <Input
+                  className="flex-1 min-w-[140px]"
+                  value={m.name}
+                  onChange={(e) =>
+                    updateMedicine(m.id, {
+                      name: e.target.value,
+                      strength: undefined,
+                      packSize: undefined,
+                      dosage: undefined,
+                    })
+                  }
+                />
+                <Input
+                  type="number"
+                  min={1}
+                  className="w-20"
+                  value={m.quantity}
+                  onChange={(e) =>
+                    updateMedicine(m.id, { quantity: Math.max(1, parseInt(e.target.value, 10) || 1) })
+                  }
+                />
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeMedicine(m.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              {(m.strength || m.packSize || m.dosage) && (
+                <p className="text-xs text-muted-foreground pl-0.5">
+                  {formatMedicineLineDetails(m)}
+                </p>
+              )}
+              <MedicineQuantitySuggestions
+                medicineName={m.name}
+                selectedStrength={m.strength}
+                selectedPackLabel={m.packSize ?? m.dosage}
+                onSelectStrength={(suggestion) => applyStrengthSuggestion(m.id, suggestion)}
+                onSelectPack={(suggestion) => applyPackSuggestion(m.id, suggestion)}
               />
-              <Input
-                type="number"
-                min={1}
-                className="w-20"
-                value={m.quantity}
-                onChange={(e) =>
-                  updateMedicine(m.id, { quantity: Math.max(1, parseInt(e.target.value, 10) || 1) })
-                }
-              />
-              <Button type="button" variant="ghost" size="icon" onClick={() => removeMedicine(m.id)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
             </div>
           ))}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 items-end border-t pt-3">
-        <div className="flex-1 min-w-[160px]">
-          <Label className="text-xs">Add medicine manually</Label>
+      <div className="space-y-2 border-t pt-3">
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[160px]">
+            <Label className="text-xs">Add medicine manually</Label>
+            <Input
+              placeholder="Medicine name"
+              value={manualName}
+              onChange={(e) => {
+                setManualName(e.target.value);
+                setManualStrength(undefined);
+                setManualPackLabel(undefined);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && addManualMedicine()}
+            />
+          </div>
           <Input
-            placeholder="Medicine name"
-            value={manualName}
-            onChange={(e) => setManualName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addManualMedicine()}
+            type="number"
+            min={1}
+            className="w-20"
+            value={manualQty}
+            onChange={(e) => setManualQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
           />
+          <Button type="button" variant="secondary" onClick={addManualMedicine}>
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
-        <Input
-          type="number"
-          min={1}
-          className="w-20"
-          value={manualQty}
-          onChange={(e) => setManualQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+        {(manualStrength || manualPackLabel) && (
+          <p className="text-xs text-muted-foreground">
+            {formatMedicineLineDetails({
+              strength: manualStrength,
+              packSize: manualPackLabel,
+            })}
+          </p>
+        )}
+        <MedicineQuantitySuggestions
+          medicineName={manualName}
+          selectedStrength={manualStrength}
+          selectedPackLabel={manualPackLabel}
+          onSelectStrength={(suggestion) => applyStrengthSuggestion('manual', suggestion)}
+          onSelectPack={(suggestion) => applyPackSuggestion('manual', suggestion)}
         />
-        <Button type="button" variant="secondary" onClick={addManualMedicine}>
-          <Plus className="h-4 w-4" />
-        </Button>
       </div>
 
       <div className="space-y-2">
@@ -430,7 +597,9 @@ export function MedicineOrderPanel({
         onClick={() => void placeOrder()}
       >
         {placing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-        Request medicines (await pharmacy quote)
+        {requiresManualReview
+          ? 'Request medicines (pharmacy will review prescription)'
+          : 'Request medicines (await pharmacy quote)'}
       </Button>
     </Card>
   );

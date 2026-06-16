@@ -1,23 +1,91 @@
 'use client';
 
 import * as React from 'react';
-import { Check, Loader2, Route } from 'lucide-react';
+import { Check, Loader2, MapPin, MapPinOff, Sparkles } from 'lucide-react';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
+import type { RouteShopSearchTier } from '@/lib/route-shop-search';
+import type { RouteOption } from '@/types/order-flow';
 import { cn } from '@/lib/utils';
 
 type Props = {
   loading: boolean;
   searchComplete: boolean;
+  searchTier?: RouteShopSearchTier;
 };
 
-export function RouteOptionsPicker({ loading, searchComplete }: Props) {
+function ShopOptionCard({
+  opt,
+  selected,
+  onSelect,
+}: {
+  opt: RouteOption;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'w-full rounded-2xl p-4 text-left transition-all border-2',
+        selected
+          ? 'border-primary bg-primary/5 shadow-sm'
+          : 'border-transparent bg-muted/40 hover:bg-muted/60',
+        opt.isSuggested && !selected && 'border-primary/20'
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-lg leading-tight">{opt.label}</p>
+            {opt.isSuggested && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                <Sparkles className="h-3 w-3" />
+                Suggested
+              </span>
+            )}
+          </div>
+          {(opt.streetName || opt.shopAddress) && (
+            <p className="text-sm text-muted-foreground mt-1 flex items-start gap-1.5">
+              <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span className="line-clamp-2">{opt.streetName || opt.shopAddress}</span>
+            </p>
+          )}
+        </div>
+        {selected && (
+          <span className="shrink-0 h-6 w-6 rounded-full bg-primary flex items-center justify-center">
+            <Check className="h-3.5 w-3.5 text-primary-foreground" />
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-3 mt-3 flex-wrap">
+        <span className="text-xl font-bold tabular-nums">
+          ₹{opt.totalPrice.toLocaleString('en-IN')}
+        </span>
+        <span className="text-sm font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+          +{opt.addedMinutes} min detour
+        </span>
+        {opt.savings > 0 && (
+          <span className="text-sm text-emerald-600 font-medium">
+            Save ₹{opt.savings}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+export function RouteOptionsPicker({ loading, searchComplete, searchTier = 'none' }: Props) {
   const { routeOptions, selectedRouteOptionId, selectRouteOption } = useOrderFlow();
+
+  const suggested = routeOptions.filter((o) => o.isSuggested);
+  const others = routeOptions.filter((o) => !o.isSuggested);
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
-        <p className="text-sm">Finding the best options on your route…</p>
+        <p className="text-sm">Finding shops on your route…</p>
       </div>
     );
   }
@@ -26,14 +94,20 @@ export function RouteOptionsPicker({ loading, searchComplete }: Props) {
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Your route is set</h2>
+          <h2 className="text-2xl font-bold tracking-tight">No shops on your route</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            No matching stops on your route right now — you can continue with your direct trip.
+            We couldn&apos;t find grocery shops along this route or within a 5 km detour.
           </p>
         </div>
         <div className="rounded-2xl bg-muted/30 p-6 text-center text-muted-foreground">
-          <Route className="h-8 w-8 mx-auto mb-2 opacity-60" />
-          <p className="text-sm">We&apos;ll notify you when shops open along this route.</p>
+          <MapPinOff className="h-8 w-8 mx-auto mb-2 opacity-60" />
+          <p className="text-sm font-medium text-foreground">
+            No shops available on the route right now.
+          </p>
+          <p className="text-sm mt-2">
+            We&apos;re working on bringing more vendors to you — you can still continue with your
+            trip.
+          </p>
         </div>
       </div>
     );
@@ -44,57 +118,47 @@ export function RouteOptionsPicker({ loading, searchComplete }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Your best choices</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Shops on your way</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          We compared shops on your route — pick what works for you.
+          {searchTier === 'detour'
+            ? 'Nothing directly on your route — these stops are within a 5 km detour.'
+            : 'Pick where you&apos;d like to stop for groceries along your trip.'}
         </p>
       </div>
 
-      <div className="space-y-3">
-        {routeOptions.map((opt) => {
-          const selected = selectedRouteOptionId === opt.id;
-          return (
-            <button
+      {suggested.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Suggested on your route
+          </h3>
+          {suggested.map((opt) => (
+            <ShopOptionCard
               key={opt.id}
-              type="button"
-              onClick={() => selectRouteOption(opt.id)}
-              className={cn(
-                'w-full rounded-2xl p-4 text-left transition-all border-2',
-                selected
-                  ? 'border-primary bg-primary/5 shadow-sm'
-                  : 'border-transparent bg-muted/40 hover:bg-muted/60'
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-lg">{opt.label}</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">{opt.description}</p>
-                </div>
-                {selected && (
-                  <span className="shrink-0 h-6 w-6 rounded-full bg-primary flex items-center justify-center">
-                    <Check className="h-3.5 w-3.5 text-primary-foreground" />
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-4 mt-3 flex-wrap">
-                <span className="text-2xl font-bold tabular-nums">
-                  ₹{opt.totalPrice.toLocaleString('en-IN')}
-                </span>
-                <span className="text-sm font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                  +{opt.addedMinutes} min
-                </span>
-                {opt.savings > 0 && (
-                  <span className="text-sm text-emerald-600 font-medium">
-                    Save ₹{opt.savings}
-                  </span>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+              opt={opt}
+              selected={selectedRouteOptionId === opt.id}
+              onSelect={() => selectRouteOption(opt.id)}
+            />
+          ))}
+        </section>
+      )}
+
+      {others.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {suggested.length > 0 ? 'Other shops nearby' : 'Available shops'}
+          </h3>
+          {others.map((opt) => (
+            <ShopOptionCard
+              key={opt.id}
+              opt={opt}
+              selected={selectedRouteOptionId === opt.id}
+              onSelect={() => selectRouteOption(opt.id)}
+            />
+          ))}
+        </section>
+      )}
     </div>
   );
 }

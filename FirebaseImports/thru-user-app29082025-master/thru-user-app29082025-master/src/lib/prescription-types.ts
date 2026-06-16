@@ -5,6 +5,11 @@ export const PRESCRIPTION_MAX_AGE_MONTHS = 3;
 export interface ParsedMedicineLine {
   id: string;
   name: string;
+  /** e.g. 500 mg, 10 mg */
+  strength?: string;
+  /** e.g. 15 tablets strip, 60 ml bottle */
+  packSize?: string;
+  /** @deprecated use strength + packSize */
   dosage?: string;
   quantity: number;
   /** Vendor fills after review */
@@ -23,6 +28,8 @@ export interface PrescriptionMetadata {
   dateValid?: boolean;
   doctorName?: string;
   aiRawNotes?: string;
+  /** AI could not parse — pharmacy reviews the uploaded image */
+  requiresManualReview?: boolean;
   medicines: ParsedMedicineLine[];
 }
 
@@ -52,4 +59,13 @@ export function buildOrderId(): string {
 export function isMedicineVendorType(vendorType?: string | null): boolean {
   const v = (vendorType ?? '').toLowerCase();
   return v === 'medical' || v === 'pharmacy' || v === 'medicine';
+}
+
+export function formatMedicineLineDetails(
+  line: Pick<ParsedMedicineLine, 'strength' | 'packSize' | 'dosage'>
+): string {
+  const parts = [line.strength, line.packSize].filter(Boolean);
+  if (parts.length > 0) return parts.join(' · ');
+  if (line.dosage?.trim()) return line.dosage.trim();
+  return 'Awaiting pharmacy pricing';
 }

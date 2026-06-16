@@ -94,8 +94,11 @@ export function ReviewSummary() {
         </p>
         {option?.shopNames?.length ? (
           <p>
-            <span className="text-muted-foreground">Stops:</span>{' '}
+            <span className="text-muted-foreground">Pickup:</span>{' '}
             <span className="font-medium">{option.shopNames.join(', ')}</span>
+            {option.streetName ? (
+              <span className="text-muted-foreground"> · {option.streetName}</span>
+            ) : null}
           </p>
         ) : null}
       </div>

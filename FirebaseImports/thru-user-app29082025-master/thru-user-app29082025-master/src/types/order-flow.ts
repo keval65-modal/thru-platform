@@ -21,6 +21,31 @@ export type GroceryListItem = {
   showUnit?: boolean;
 };
 
+export type CartFoodItem = {
+  id: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  vendorId?: string;
+  vendorName?: string;
+};
+
+export type CartMedicineItem = {
+  id: string;
+  name: string;
+  dosage?: string;
+  quantity: number;
+  /** 0 when awaiting pharmacy quote */
+  unitPrice: number;
+};
+
+export type PickupStore = {
+  category: OrderCategory;
+  vendorId: string;
+  vendorName: string;
+  address?: string;
+};
+
 export type RouteStop = {
   id: string;
   name: string;
@@ -35,12 +60,22 @@ export type RouteCoords = {
 
 export type RouteOption = {
   id: string;
+  /** Shop display name (primary title) */
   label: string;
   totalPrice: number;
   savings: number;
+  /** Extra minutes off route; 0 when on path */
   addedMinutes: number;
+  /** User-facing timing badge, e.g. "On your path" */
+  timingLabel: string;
+  isOnPath: boolean;
   shopIds: string[];
   shopNames: string[];
+  shopAddress: string;
+  streetName: string;
+  isSuggested: boolean;
+  isOnRoute: boolean;
+  /** Street line or short location hint */
   description: string;
 };
 
@@ -66,6 +101,10 @@ export type OrderFlowState = {
   isImmediate: boolean;
   categories: OrderCategory[];
   groceryItems: GroceryListItem[];
+  foodItems: CartFoodItem[];
+  medicineItems: CartMedicineItem[];
+  selectedFoodVendor: PickupStore | null;
+  selectedMedicineVendor: PickupStore | null;
   selectedRouteOptionId: string | null;
   routeOptions: RouteOption[];
 };
@@ -80,5 +119,11 @@ export const ORDER_FLOW_STEPS = [
 export const MEDICINE_ENABLED =
   process.env.NEXT_PUBLIC_ENABLE_MEDICINE !== 'false';
 
-/** Internal detour — never shown to users */
-export const AUTO_DETOUR_KM = 12;
+/** Tight corridor — shops considered directly on the route */
+export const ON_ROUTE_DETOUR_KM = 2;
+
+/** Maximum detour when nothing is found on-route */
+export const MAX_ROUTE_DETOUR_KM = 5;
+
+/** @deprecated Use MAX_ROUTE_DETOUR_KM */
+export const AUTO_DETOUR_KM = MAX_ROUTE_DETOUR_KM;
