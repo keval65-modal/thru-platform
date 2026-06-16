@@ -3,9 +3,9 @@
 import { Buffer } from 'buffer'
 import { NextResponse } from 'next/server'
 
-import { extractMenuData } from '@/ai/flows/extract-menu-flow'
+import { extractMenuFromPdfWithFallback } from '@/ai/flows/extract-menu-flow'
 import { getSession } from '@/lib/auth'
-import { mapExtractedItemsToRows } from '@/lib/menu-import'
+import { mapExtractedItemsToRows, formatMenuExtractionError } from '@/lib/menu-import'
 import { getSupabaseServiceDbClient } from '@/lib/supabase-auth'
 import { isMenuUploadEnabled } from '@/lib/vendor-features'
 
@@ -209,19 +209,13 @@ export async function POST(request: Request) {
       return null
     })
 
-    const extraction = await (async () => {
-      const menuDataUri = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`
-
-      if (menuText && menuText.trim().length >= 50) {
-        try {
-          return await extractMenuData({ menuText, vendorId: session.id })
-        } catch (textError) {
-          console.warn('[Menu Upload] Text-based extraction failed, falling back to PDF vision:', textError)
-        }
-      }
-
-      return await extractMenuData({ menuDataUri, vendorId: session.id })
-    })()
+    const menuDataUri = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`
+    const extraction = await extractMenuFromPdfWithFallback({
+      vendorId: session.id,
+      menuText,
+      menuDataUri,
+      fileName,
+    })
 
     const extractedItems = extraction.extractedItems ?? []
 
@@ -280,14 +274,8 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('[Menu Upload] Unexpected error:', error)
-    const message = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      {
-        error:
-          message.length > 0 && message.length <= 240
-            ? message
-            : 'Unable to process this menu right now. Please try again shortly.',
-      },
+      { error: formatMenuExtractionError(error) },
       { status: 500 },
     )
   }

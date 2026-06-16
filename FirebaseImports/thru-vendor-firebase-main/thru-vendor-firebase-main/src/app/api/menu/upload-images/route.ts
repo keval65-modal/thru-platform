@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 
 import { extractMenuFromImagePage } from '@/ai/flows/extract-menu-flow'
 import { getSession } from '@/lib/auth'
-import { mapExtractedItemsToRows } from '@/lib/menu-import'
+import { mapExtractedItemsToRows, formatMenuExtractionError } from '@/lib/menu-import'
 import { getSupabaseServiceDbClient } from '@/lib/supabase-auth'
 import { isMenuUploadEnabled } from '@/lib/vendor-features'
 
@@ -219,7 +219,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[Menu Image Upload] Unexpected error:', error)
     return NextResponse.json(
-      { error: 'Unable to process menu photos right now. Please try again shortly.' },
+      { error: formatMenuExtractionError(error) },
       { status: 500 },
     )
   }

@@ -7,6 +7,8 @@ if (!apiKey) {
 }
 
 export const openAiMenuModel = process.env.OPENAI_MENU_MODEL ?? 'gpt-4o-mini'
+export const openAiMenuVisionModel =
+  process.env.OPENAI_MENU_VISION_MODEL ?? process.env.OPENAI_MENU_MODEL ?? 'gpt-4o-mini'
 
 export const openaiClient = apiKey
   ? new OpenAI({

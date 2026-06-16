@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { openaiClient, openAiMenuModel } from '@/ai/openai-client'
+import { openaiClient, openAiMenuModel, openAiMenuVisionModel } from '@/ai/openai-client'
 import { ai, menuExtractionModel } from '@/ai/genkit'
 
 const MenuItemSchema = z.object({
@@ -143,6 +143,80 @@ export async function extractMenuData(input: ExtractMenuInput): Promise<ExtractM
   return validation.data
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** Try OpenAI text, Gemini PDF vision, then OpenAI PDF vision. */
+export async function extractMenuFromPdfWithFallback(input: {
+  vendorId: string
+  menuText?: string | null
+  menuDataUri: string
+  fileName?: string
+}): Promise<ExtractMenuOutput> {
+  const failures: string[] = []
+  const trimmedText = input.menuText?.trim() ?? ''
+
+  if (trimmedText.length >= 10) {
+    try {
+      return await extractMenuData({ menuText: trimmedText, vendorId: input.vendorId })
+    } catch (error) {
+      failures.push(`OpenAI text: ${errorMessage(error)}`)
+      console.warn('[extractMenuFlow] OpenAI text extraction failed:', error)
+    }
+  }
+
+  try {
+    return await extractMenuData({ menuDataUri: input.menuDataUri, vendorId: input.vendorId })
+  } catch (error) {
+    failures.push(`Gemini PDF: ${errorMessage(error)}`)
+    console.warn('[extractMenuFlow] Gemini PDF extraction failed:', error)
+  }
+
+  if (openaiClient) {
+    try {
+      return await extractMenuDataFromOpenAiPdf(
+        input.vendorId,
+        input.menuDataUri,
+        input.fileName ?? 'menu.pdf',
+      )
+    } catch (error) {
+      failures.push(`OpenAI PDF: ${errorMessage(error)}`)
+      console.warn('[extractMenuFlow] OpenAI PDF extraction failed:', error)
+    }
+  }
+
+  throw new Error(failures[0] ?? 'All menu extraction providers failed.')
+}
+
+async function extractMenuDataFromOpenAiPdf(
+  vendorId: string,
+  menuDataUri: string,
+  fileName: string,
+): Promise<ExtractMenuOutput> {
+  if (!openaiClient) {
+    throw new Error('OPENAI_API_KEY is not configured. Unable to run OpenAI PDF extraction.')
+  }
+
+  const outputText = await extractViaOpenAiPdf(vendorId, menuDataUri, fileName)
+
+  let parsed: unknown
+  try {
+    parsed = parseModelJson(outputText)
+  } catch (error) {
+    console.error('[extractMenuDataFromOpenAiPdf] Failed parsing model output:', outputText)
+    throw new Error('OpenAI PDF extraction returned invalid JSON.')
+  }
+
+  const validation = ExtractMenuOutputSchema.safeParse(parsed)
+  if (!validation.success) {
+    console.error('[extractMenuDataFromOpenAiPdf] Output validation failed:', validation.error.flatten())
+    throw new Error('OpenAI PDF extraction result failed validation.')
+  }
+
+  return validation.data
+}
+
 export async function extractMenuFromImagePage(
   input: ExtractMenuImageInput,
 ): Promise<ExtractMenuPageOutput> {
@@ -220,6 +294,42 @@ Return only JSON following the specified schema.`,
 
   const outputText = response.output_text?.trim()
   if (!outputText) throw new Error('OpenAI did not return any content for menu extraction.')
+  return outputText
+}
+
+async function extractViaOpenAiPdf(
+  vendorId: string,
+  menuDataUri: string,
+  fileName: string,
+): Promise<string> {
+  if (!openaiClient) {
+    throw new Error('OPENAI_API_KEY is not configured. Unable to run OpenAI PDF extraction.')
+  }
+
+  const response = await openaiClient.responses.create({
+    model: openAiMenuVisionModel,
+    input: [
+      { role: 'system', content: [{ type: 'input_text', text: SYSTEM_PROMPT }] },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_file',
+            filename: fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`,
+            file_data: menuDataUri,
+          },
+          {
+            type: 'input_text',
+            text: `Vendor ID: ${vendorId}.
+The attached PDF is a restaurant menu. Extract every orderable item and return ONLY JSON following the schema (no markdown).`,
+          },
+        ],
+      },
+    ],
+  })
+
+  const outputText = response.output_text?.trim()
+  if (!outputText) throw new Error('OpenAI did not return any content for PDF menu extraction.')
   return outputText
 }
 
