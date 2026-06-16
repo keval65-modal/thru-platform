@@ -16,6 +16,13 @@ import { useFirebaseUser } from '@/hooks/useFirebaseUser';
 import { useSavedDestinations } from '@/hooks/useSavedDestinations';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import {
+  buildLocalDepartureIso,
+  clampScheduledDepartureIso,
+  isDepartureIsoInPast,
+  nextValidDepartureParts,
+  PAST_DEPARTURE_TIME_MESSAGE,
+} from '@/lib/departure-time';
 import type { SavedDestination } from '@/types/saved-destinations';
 
 function formatTimeDisplay(dateString: string) {
@@ -30,19 +37,6 @@ function parseCoordString(str: string | null): { lat: number; lng: number } | nu
   const m = str.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
   if (!m) return null;
   return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
-}
-
-function buildDepartureIso(hours: number, minutes: number): string {
-  const now = new Date();
-  const selected = new Date(now);
-  selected.setHours(hours, minutes, 0, 0);
-  if (selected < now) selected.setDate(selected.getDate() + 1);
-  const y = selected.getFullYear();
-  const mo = String(selected.getMonth() + 1).padStart(2, '0');
-  const d = String(selected.getDate()).padStart(2, '0');
-  const h = String(selected.getHours()).padStart(2, '0');
-  const mi = String(selected.getMinutes()).padStart(2, '0');
-  return `${y}-${mo}-${d}T${h}:${mi}`;
 }
 
 export function DestinationForm() {
@@ -165,18 +159,38 @@ export function DestinationForm() {
     if (checked) {
       setDeparture(`${y}-${mo}-${d}T${h}:${mi}`, true);
     } else {
-      const scheduled = flow.departureTime && !flow.isImmediate
-        ? flow.departureTime
-        : buildDepartureIso(now.getHours(), Math.min(now.getMinutes() + 30, 59));
+      const scheduled =
+        flow.departureTime && !flow.isImmediate && !isDepartureIsoInPast(flow.departureTime)
+          ? flow.departureTime
+          : (() => {
+              const parts = nextValidDepartureParts();
+              return buildLocalDepartureIso(parts.hours, parts.minutes);
+            })();
       setDeparture(scheduled, false);
     }
   };
 
   const handleTimeSelect = (time24h: string) => {
     const [hours, minutes] = time24h.split(':');
-    setDeparture(buildDepartureIso(parseInt(hours, 10), parseInt(minutes, 10)), false);
+    const h = parseInt(hours, 10);
+    const m = parseInt(minutes, 10);
+    if (isDepartureIsoInPast(buildLocalDepartureIso(h, m))) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid departure time',
+        description: PAST_DEPARTURE_TIME_MESSAGE,
+      });
+      return;
+    }
+    setDeparture(buildLocalDepartureIso(h, m), false);
     setShowTimePicker(false);
   };
+
+  React.useEffect(() => {
+    if (!flow.hydrated || flow.isImmediate || !flow.departureTime) return;
+    if (!isDepartureIsoInPast(flow.departureTime)) return;
+    setDeparture(clampScheduledDepartureIso(flow.departureTime), false);
+  }, [flow.hydrated, flow.isImmediate, flow.departureTime, setDeparture]);
 
   const destDraft = React.useMemo(() => {
     const coords = parseCoordString(flow.selectedDestination);

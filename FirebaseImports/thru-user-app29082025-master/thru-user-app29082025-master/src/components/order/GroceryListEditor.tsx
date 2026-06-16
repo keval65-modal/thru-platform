@@ -153,7 +153,11 @@ export function GroceryListEditor() {
       </div>
 
       {groceryItems.length > 0 ? (
-        <div className="divide-y divide-border/40">
+        <div>
+          <p className="mb-2 text-right text-xs text-muted-foreground">
+            Tap the unit label to pick kg, packet, and more
+          </p>
+          <div className="divide-y divide-border/40">
           {groceryItems.map((item) => (
             <GroceryItemRow
               key={item.id}
@@ -162,6 +166,7 @@ export function GroceryListEditor() {
               onRemove={() => removeGroceryItem(item.id)}
             />
           ))}
+          </div>
         </div>
       ) : (
         <p className="text-center text-sm text-muted-foreground py-8">

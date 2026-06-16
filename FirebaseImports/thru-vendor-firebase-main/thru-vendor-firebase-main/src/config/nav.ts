@@ -1,6 +1,6 @@
 
 import type { LucideProps } from 'lucide-react';
-import { LayoutDashboard, ShoppingCart, Archive, DollarSign, UserCircle, Shield, MapPin, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, DollarSign, UserCircle, Shield, MapPin, ClipboardCheck } from 'lucide-react';
 
 export interface NavItem {
   title: string;
@@ -26,11 +26,6 @@ export const mainNavItems: NavItem[] = [
     title: 'Orders',
     href: '/orders', 
     icon: ShoppingCart, 
-  },
-  {
-    title: 'Inventory',
-    href: '/inventory',
-    icon: Archive,
   },
   {
     title: 'Financial Report',

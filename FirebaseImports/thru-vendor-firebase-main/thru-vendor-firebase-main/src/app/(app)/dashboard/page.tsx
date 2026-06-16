@@ -7,13 +7,14 @@ import { useSession } from "@/hooks/use-session";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, ShieldCheck, ShieldAlert, BadgeCheck, FileText, Download } from "lucide-react";
+import { ArrowRight, ShieldCheck, ShieldAlert, BadgeCheck, FileText, Download, Utensils } from "lucide-react";
 import { SalesChart } from "@/components/dashboard/SalesChart";
 import { getKycData } from "@/lib/kyc-service";
 import { KycStatus } from "@/types/kyc";
 import type { OnboardingSummary } from '@/lib/onboarding-service';
 import { ProfileCompletionCard } from '@/components/onboarding/ProfileCompletionCard';
 import type { AuthenticatedSession, SessionData } from '@/types/session';
+import { isMenuUploadEnabled } from '@/lib/vendor-features';
 
 function isAuthenticatedSession(session: SessionData | null | undefined): session is AuthenticatedSession {
   return Boolean(session && session.isAuthenticated);
@@ -242,20 +243,22 @@ export default function DashboardPage() {
             </Button>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Update Inventory</CardTitle>
-            <CardDescription>Add new products or manage your existing stock and prices.</CardDescription>
-          </CardHeader>
-           <CardContent>
-             <p className="text-sm text-muted-foreground mb-4">
-              Whether you're a restaurant adding menu items or a shop updating product stock, this is the place to manage it all.
-            </p>
-            <Button asChild>
-              <Link href="/inventory">Go to Inventory <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {isMenuUploadEnabled(session.storeCategory) && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Manage Menu</CardTitle>
+              <CardDescription>Add menu items manually or upload a PDF to import your menu.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Keep your menu up to date so customers can browse and order from your store.
+              </p>
+              <Button asChild>
+                <Link href="/menu">Go to Menu <Utensils className="ml-2 h-4 w-4" /></Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
       
       <div>

@@ -17,7 +17,10 @@ import { AnalogClockPicker } from '@/components/home/AnalogClockPicker';
 import {
   formatTime24h,
   formatTime24hInput,
+  isScheduledTimeInPast,
+  nextValidDepartureParts,
   parseTime24h,
+  PAST_DEPARTURE_TIME_MESSAGE,
   time24hFromDateString,
 } from '@/lib/departure-time';
 
@@ -31,15 +34,6 @@ type Props = {
   value: string;
   onConfirm: (time24h: string) => void;
 };
-
-function defaultTimeParts(): { hours: number; minutes: number } {
-  const now = new Date();
-  const minutes = Math.ceil(now.getMinutes() / 5) * 5;
-  if (minutes >= 60) {
-    return { hours: (now.getHours() + 1) % 24, minutes: 0 };
-  }
-  return { hours: now.getHours(), minutes };
-}
 
 export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Props) {
   const [mode, setMode] = React.useState<PickerMode>('clock');
@@ -59,7 +53,11 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
       setMode(stored);
     }
 
-    const fromValue = time24hFromDateString(value) ?? defaultTimeParts();
+    const parsedValue = time24hFromDateString(value);
+    const fromValue =
+      parsedValue && !isScheduledTimeInPast(parsedValue.hours, parsedValue.minutes)
+        ? parsedValue
+        : nextValidDepartureParts();
     setHours(fromValue.hours);
     setMinutes(fromValue.minutes);
     setTextValue(formatTime24h(fromValue.hours, fromValue.minutes));
@@ -104,9 +102,16 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
       return;
     }
 
+    if (isScheduledTimeInPast(parsed.hours, parsed.minutes)) {
+      setTextError(PAST_DEPARTURE_TIME_MESSAGE);
+      return;
+    }
+
     onConfirm(formatTime24h(parsed.hours, parsed.minutes));
     onOpenChange(false);
   };
+
+  const selectedIsPast = isScheduledTimeInPast(hours, minutes);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -127,7 +132,7 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="clock" className="mt-4">
+          <TabsContent value="clock" className="mt-4 space-y-2">
             <AnalogClockPicker
               hours={hours}
               minutes={minutes}
@@ -135,6 +140,9 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
               onActiveHandChange={setActiveHand}
               onChange={handleClockChange}
             />
+            {selectedIsPast && (
+              <p className="text-xs text-destructive text-center">{PAST_DEPARTURE_TIME_MESSAGE}</p>
+            )}
           </TabsContent>
 
           <TabsContent value="text" className="mt-4 space-y-3">
@@ -167,7 +175,7 @@ export function DepartureTimePicker({ open, onOpenChange, value, onConfirm }: Pr
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" onClick={handleConfirm}>
+          <Button type="button" onClick={handleConfirm} disabled={selectedIsPast}>
             Set {formatTime24h(hours, minutes)}
           </Button>
         </DialogFooter>

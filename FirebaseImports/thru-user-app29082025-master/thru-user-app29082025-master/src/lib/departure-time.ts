@@ -28,17 +28,68 @@ export function time24hFromDateString(dateString: string): { hours: number; minu
   return { hours: date.getHours(), minutes: date.getMinutes() };
 }
 
-export function buildDepartureDateTimeFromTime(
+/** Next 5-minute slot at or after the reference time (local). */
+export function nextValidDepartureParts(reference: Date = new Date()): { hours: number; minutes: number } {
+  const rounded = new Date(reference);
+  rounded.setSeconds(0, 0);
+  const minutes = Math.ceil(rounded.getMinutes() / 5) * 5;
+  if (minutes >= 60) {
+    rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+    return { hours: rounded.getHours() % 24, minutes: 0 };
+  }
+  return { hours: rounded.getHours(), minutes };
+}
+
+export function buildLocalDepartureIso(
   hours: number,
   minutes: number,
   reference: Date = new Date()
 ): string {
   const selected = new Date(reference);
   selected.setHours(hours, minutes, 0, 0);
+  const y = selected.getFullYear();
+  const mo = String(selected.getMonth() + 1).padStart(2, '0');
+  const d = String(selected.getDate()).padStart(2, '0');
+  const h = String(selected.getHours()).padStart(2, '0');
+  const mi = String(selected.getMinutes()).padStart(2, '0');
+  return `${y}-${mo}-${d}T${h}:${mi}`;
+}
 
-  if (selected < reference) {
-    selected.setDate(selected.getDate() + 1);
-  }
+/** True when the chosen clock time today is already before now. */
+export function isScheduledTimeInPast(
+  hours: number,
+  minutes: number,
+  reference: Date = new Date()
+): boolean {
+  const selected = new Date(reference);
+  selected.setHours(hours, minutes, 0, 0);
+  const now = new Date(reference);
+  now.setSeconds(0, 0);
+  return selected.getTime() < now.getTime();
+}
 
-  return selected.toISOString().slice(0, 16);
+export function isDepartureIsoInPast(isoString: string, reference: Date = new Date()): boolean {
+  if (!isoString) return true;
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return true;
+  const now = new Date(reference);
+  now.setSeconds(0, 0);
+  return date.getTime() < now.getTime();
+}
+
+export function clampScheduledDepartureIso(isoString: string, reference: Date = new Date()): string {
+  if (!isDepartureIsoInPast(isoString, reference)) return isoString;
+  const parts = nextValidDepartureParts(reference);
+  return buildLocalDepartureIso(parts.hours, parts.minutes, reference);
+}
+
+export const PAST_DEPARTURE_TIME_MESSAGE =
+  'That time has already passed. Choose a later departure time.';
+
+export function buildDepartureDateTimeFromTime(
+  hours: number,
+  minutes: number,
+  reference: Date = new Date()
+): string {
+  return buildLocalDepartureIso(hours, minutes, reference);
 }

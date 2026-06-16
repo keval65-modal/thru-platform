@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { createServiceSupabaseClient } from '@/lib/supabase/server';
 import {
   savedDestinationDisplayLabel,
@@ -34,6 +35,11 @@ type TravelPatternRow = {
   last_used_at: string;
 };
 
+type SavedDestinationsPreferences = {
+  savedDestinations?: SavedDestinationRow[];
+  travelPatterns?: TravelPatternRow[];
+};
+
 function mapSavedDestination(row: SavedDestinationRow): SavedDestination {
   return {
     id: row.id,
@@ -67,6 +73,66 @@ function mapTravelPattern(row: TravelPatternRow): DestinationTravelPattern {
   };
 }
 
+function parsePreferences(raw: unknown): SavedDestinationsPreferences {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const prefs = raw as SavedDestinationsPreferences;
+  return {
+    savedDestinations: Array.isArray(prefs.savedDestinations) ? prefs.savedDestinations : [],
+    travelPatterns: Array.isArray(prefs.travelPatterns) ? prefs.travelPatterns : [],
+  };
+}
+
+async function loadUserPreferences(
+  firebaseUid: string
+): Promise<{ phone: string | null; prefs: SavedDestinationsPreferences }> {
+  const supabase = createServiceSupabaseClient();
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('phone, preferences')
+    .eq('firebase_uid', firebaseUid)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    phone: data?.phone ?? null,
+    prefs: parsePreferences(data?.preferences),
+  };
+}
+
+async function saveUserPreferences(
+  firebaseUid: string,
+  phone: string | null | undefined,
+  prefs: SavedDestinationsPreferences
+): Promise<void> {
+  const supabase = createServiceSupabaseClient();
+  const { data: existing } = await supabase
+    .from('user_profiles')
+    .select('preferences')
+    .eq('firebase_uid', firebaseUid)
+    .maybeSingle();
+
+  const mergedPreferences = {
+    ...(existing?.preferences && typeof existing.preferences === 'object' && !Array.isArray(existing.preferences)
+      ? (existing.preferences as Record<string, unknown>)
+      : {}),
+    savedDestinations: prefs.savedDestinations ?? [],
+    travelPatterns: prefs.travelPatterns ?? [],
+  };
+
+  const { error } = await supabase.from('user_profiles').upsert(
+    {
+      firebase_uid: firebaseUid,
+      phone: phone ?? null,
+      preferences: mergedPreferences,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'firebase_uid' }
+  );
+
+  if (error) throw new Error(error.message);
+}
+
 export async function ensureUserProfile(firebaseUid: string, phone?: string | null) {
   const supabase = createServiceSupabaseClient();
   const { error } = await supabase.from('user_profiles').upsert(
@@ -83,16 +149,16 @@ export async function ensureUserProfile(firebaseUid: string, phone?: string | nu
 }
 
 export async function listSavedDestinations(firebaseUid: string): Promise<SavedDestination[]> {
-  const supabase = createServiceSupabaseClient();
-  const { data, error } = await supabase
-    .from('saved_destinations')
-    .select('*')
-    .eq('firebase_uid', firebaseUid)
-    .order('label_type', { ascending: true })
-    .order('custom_label', { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return (data as SavedDestinationRow[] | null)?.map(mapSavedDestination) ?? [];
+  const { prefs } = await loadUserPreferences(firebaseUid);
+  const rows = prefs.savedDestinations ?? [];
+  return rows
+    .filter((row) => row.firebase_uid === firebaseUid)
+    .sort((a, b) => {
+      const typeOrder = a.label_type.localeCompare(b.label_type);
+      if (typeOrder !== 0) return typeOrder;
+      return (a.custom_label ?? '').localeCompare(b.custom_label ?? '');
+    })
+    .map(mapSavedDestination);
 }
 
 export async function upsertSavedDestination(input: {
@@ -107,83 +173,70 @@ export async function upsertSavedDestination(input: {
 }): Promise<SavedDestination> {
   await ensureUserProfile(input.firebaseUid, input.phone);
 
-  const supabase = createServiceSupabaseClient();
+  const { prefs, phone } = await loadUserPreferences(input.firebaseUid);
+  const destinations = [...(prefs.savedDestinations ?? [])];
   const now = new Date().toISOString();
-  const payload = {
+  const customLabel = input.labelType === 'other' ? input.customLabel?.trim() ?? null : null;
+
+  const payload: SavedDestinationRow = {
+    id: randomUUID(),
     firebase_uid: input.firebaseUid,
     label_type: input.labelType,
-    custom_label: input.labelType === 'other' ? input.customLabel?.trim() ?? null : null,
+    custom_label: customLabel,
     address: input.address.trim(),
     latitude: input.latitude,
     longitude: input.longitude,
     place_id: input.placeId ?? null,
+    created_at: now,
     updated_at: now,
   };
 
+  let existingIndex = -1;
   if (input.labelType === 'other') {
-    const { data: existing } = await supabase
-      .from('saved_destinations')
-      .select('id')
-      .eq('firebase_uid', input.firebaseUid)
-      .eq('label_type', 'other')
-      .ilike('custom_label', payload.custom_label ?? '')
-      .maybeSingle();
-
-    if (existing?.id) {
-      const { data, error } = await supabase
-        .from('saved_destinations')
-        .update(payload)
-        .eq('id', existing.id)
-        .select('*')
-        .single();
-      if (error) throw new Error(error.message);
-      return mapSavedDestination(data as SavedDestinationRow);
-    }
-
-    const { data, error } = await supabase
-      .from('saved_destinations')
-      .insert({ ...payload, created_at: now })
-      .select('*')
-      .single();
-    if (error) throw new Error(error.message);
-    return mapSavedDestination(data as SavedDestinationRow);
+    const normalized = customLabel?.toLowerCase() ?? '';
+    existingIndex = destinations.findIndex(
+      (row) =>
+        row.firebase_uid === input.firebaseUid &&
+        row.label_type === 'other' &&
+        (row.custom_label ?? '').trim().toLowerCase() === normalized
+    );
+  } else {
+    existingIndex = destinations.findIndex(
+      (row) => row.firebase_uid === input.firebaseUid && row.label_type === input.labelType
+    );
   }
 
-  const { data: existingPreset } = await supabase
-    .from('saved_destinations')
-    .select('id')
-    .eq('firebase_uid', input.firebaseUid)
-    .eq('label_type', input.labelType)
-    .maybeSingle();
-
-  if (existingPreset?.id) {
-    const { data, error } = await supabase
-      .from('saved_destinations')
-      .update(payload)
-      .eq('id', existingPreset.id)
-      .select('*')
-      .single();
-    if (error) throw new Error(error.message);
-    return mapSavedDestination(data as SavedDestinationRow);
+  if (existingIndex >= 0) {
+    const existing = destinations[existingIndex];
+    destinations[existingIndex] = {
+      ...payload,
+      id: existing.id,
+      created_at: existing.created_at,
+      updated_at: now,
+    };
+  } else {
+    destinations.push(payload);
   }
 
-  const { data, error } = await supabase
-    .from('saved_destinations')
-    .insert({ ...payload, created_at: now })
-    .select('*')
-    .single();
-  if (error) throw new Error(error.message);
-  return mapSavedDestination(data as SavedDestinationRow);
+  await saveUserPreferences(input.firebaseUid, input.phone ?? phone, {
+    ...prefs,
+    savedDestinations: destinations,
+  });
+
+  const saved = existingIndex >= 0 ? destinations[existingIndex] : destinations[destinations.length - 1];
+  return mapSavedDestination(saved);
 }
 
 export async function deleteSavedDestination(firebaseUid: string, id: string): Promise<void> {
-  const supabase = createServiceSupabaseClient();
-  const { error } = await supabase
-    .from('saved_destinations')
-    .delete()
-    .eq('id', id)
-    .eq('firebase_uid', firebaseUid);
-  if (error) throw new Error(error.message);
+  const { prefs, phone } = await loadUserPreferences(firebaseUid);
+  const destinations = (prefs.savedDestinations ?? []).filter(
+    (row) => !(row.id === id && row.firebase_uid === firebaseUid)
+  );
+
+  await saveUserPreferences(firebaseUid, phone, {
+    ...prefs,
+    savedDestinations: destinations,
+  });
 }
 
 export async function recordTravelPattern(input: {
@@ -200,72 +253,62 @@ export async function recordTravelPattern(input: {
     throw new Error('Invalid departure time');
   }
 
-  const supabase = createServiceSupabaseClient();
+  const { prefs, phone } = await loadUserPreferences(input.firebaseUid);
+  const patterns = [...(prefs.travelPatterns ?? [])];
   const departureHour = departure.getHours();
   const departureMinute = departure.getMinutes();
   const dayOfWeek = departure.getDay();
   const label = input.destinationLabel.trim();
   const now = new Date().toISOString();
 
-  const { data: existing } = await supabase
-    .from('destination_travel_patterns')
-    .select('*')
-    .eq('firebase_uid', input.firebaseUid)
-    .eq('destination_label', label)
-    .eq('departure_hour', departureHour)
-    .eq('departure_minute', departureMinute)
-    .eq('day_of_week', dayOfWeek)
-    .maybeSingle();
+  const existingIndex = patterns.findIndex(
+    (row) =>
+      row.firebase_uid === input.firebaseUid &&
+      row.destination_label === label &&
+      row.departure_hour === departureHour &&
+      row.departure_minute === departureMinute &&
+      row.day_of_week === dayOfWeek
+  );
 
-  if (existing) {
-    const { data, error } = await supabase
-      .from('destination_travel_patterns')
-      .update({
-        saved_destination_id: input.savedDestinationId ?? existing.saved_destination_id,
-        destination_lat: input.destinationLat,
-        destination_lng: input.destinationLng,
-        is_immediate: input.isImmediate,
-        occurrence_count: (existing.occurrence_count ?? 1) + 1,
-        last_used_at: now,
-      })
-      .eq('id', existing.id)
-      .select('*')
-      .single();
-    if (error) throw new Error(error.message);
-    return mapTravelPattern(data as TravelPatternRow);
-  }
-
-  const { data, error } = await supabase
-    .from('destination_travel_patterns')
-    .insert({
-      firebase_uid: input.firebaseUid,
-      saved_destination_id: input.savedDestinationId ?? null,
-      destination_label: label,
+  if (existingIndex >= 0) {
+    const existing = patterns[existingIndex];
+    patterns[existingIndex] = {
+      ...existing,
+      saved_destination_id: input.savedDestinationId ?? existing.saved_destination_id,
       destination_lat: input.destinationLat,
       destination_lng: input.destinationLng,
-      departure_hour: departureHour,
-      departure_minute: departureMinute,
-      day_of_week: dayOfWeek,
       is_immediate: input.isImmediate,
-      occurrence_count: 1,
+      occurrence_count: (existing.occurrence_count ?? 1) + 1,
       last_used_at: now,
-      created_at: now,
-    })
-    .select('*')
-    .single();
+    };
+    await saveUserPreferences(input.firebaseUid, phone, { ...prefs, travelPatterns: patterns });
+    return mapTravelPattern(patterns[existingIndex]);
+  }
 
-  if (error) throw new Error(error.message);
-  return mapTravelPattern(data as TravelPatternRow);
+  const created: TravelPatternRow = {
+    id: randomUUID(),
+    firebase_uid: input.firebaseUid,
+    saved_destination_id: input.savedDestinationId ?? null,
+    destination_label: label,
+    destination_lat: input.destinationLat,
+    destination_lng: input.destinationLng,
+    departure_hour: departureHour,
+    departure_minute: departureMinute,
+    day_of_week: dayOfWeek,
+    is_immediate: input.isImmediate,
+    occurrence_count: 1,
+    last_used_at: now,
+  };
+
+  patterns.push(created);
+  await saveUserPreferences(input.firebaseUid, phone, { ...prefs, travelPatterns: patterns });
+  return mapTravelPattern(created);
 }
 
 export async function listTravelPatterns(firebaseUid: string): Promise<DestinationTravelPattern[]> {
-  const supabase = createServiceSupabaseClient();
-  const { data, error } = await supabase
-    .from('destination_travel_patterns')
-    .select('*')
-    .eq('firebase_uid', firebaseUid)
-    .order('occurrence_count', { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data as TravelPatternRow[] | null)?.map(mapTravelPattern) ?? [];
+  const { prefs } = await loadUserPreferences(firebaseUid);
+  return (prefs.travelPatterns ?? [])
+    .filter((row) => row.firebase_uid === firebaseUid)
+    .sort((a, b) => b.occurrence_count - a.occurrence_count)
+    .map(mapTravelPattern);
 }

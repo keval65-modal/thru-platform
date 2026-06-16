@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { getSupabaseDbClient } from '@/lib/supabase-auth'
+import { getSupabaseServiceDbClient } from '@/lib/supabase-auth'
 import { isMenuUploadEnabled } from '@/lib/vendor-features'
 
 export async function POST(request: Request) {
@@ -32,7 +32,16 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = getSupabaseDbClient()
+    const supabase = getSupabaseServiceDbClient()
+    if (!supabase) {
+      return NextResponse.json(
+        {
+          error:
+            'Menu save is not configured on the server. Please set SUPABASE_SERVICE_ROLE_KEY in your deployment environment.',
+        },
+        { status: 500 },
+      )
+    }
 
     if (replaceExisting) {
       const { error: deleteError } = await supabase

@@ -57,6 +57,7 @@
     "lucide-react": "^0.475.0",
     "next": "^15.5.7",
     "patch-package": "^8.0.0",
+    "postgres": "^3.4.9",
     "puppeteer": "^24.24.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",

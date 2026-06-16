@@ -69,6 +69,50 @@ const RESPONSE_JSON_SCHEMA = {
   },
 }
 
+const IMAGE_PAGE_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['isReadable', 'extractedItems'],
+  properties: {
+    isReadable: {
+      type: 'boolean',
+      description: 'True when the photo is clear enough to read menu text and prices.',
+    },
+    readabilityIssue: {
+      type: 'string',
+      description: 'When isReadable is false, a short explanation for the vendor.',
+    },
+    extractedItems: RESPONSE_JSON_SCHEMA.properties.extractedItems,
+    rawText: { type: 'string' },
+  },
+}
+
+const ExtractMenuImageInputSchema = z.object({
+  vendorId: z.string(),
+  pageNumber: z.number().int().positive().optional(),
+  menuImageDataUri: z
+    .string()
+    .regex(/^data:image\/(jpeg|png|webp);base64,/, 'Expected a base64 image data URI.'),
+})
+export type ExtractMenuImageInput = z.infer<typeof ExtractMenuImageInputSchema>
+
+const ExtractMenuPageOutputSchema = z.object({
+  isReadable: z.boolean(),
+  readabilityIssue: z.string().optional(),
+  extractedItems: z.array(MenuItemSchema),
+  rawText: z.string().optional(),
+})
+export type ExtractMenuPageOutput = z.infer<typeof ExtractMenuPageOutputSchema>
+
+const IMAGE_READABILITY_PROMPT = `You are an expert menu OCR assistant reviewing a photo of a restaurant menu page.
+
+First assess whether the image is readable enough to extract menu items:
+- Mark isReadable false if the image is blurry, too dark, cropped badly, shows no menu text, is blank, or prices/names cannot be distinguished.
+- When isReadable is false, set readabilityIssue to a helpful one-sentence explanation for the vendor (e.g. "Photo is too blurry — retake in good light and hold the camera steady.").
+- When isReadable is true, extract every orderable food or beverage item with category, item name, price text, and description if visible.
+
+Respond with JSON only. No markdown.`
+
 const MAX_MENU_TEXT_CHARS = 120_000
 
 export async function extractMenuData(input: ExtractMenuInput): Promise<ExtractMenuOutput> {
@@ -97,6 +141,50 @@ export async function extractMenuData(input: ExtractMenuInput): Promise<ExtractM
   )
 
   return validation.data
+}
+
+export async function extractMenuFromImagePage(
+  input: ExtractMenuImageInput,
+): Promise<ExtractMenuPageOutput> {
+  const payload = ExtractMenuImageInputSchema.parse(input)
+  const outputText = await extractViaGeminiImage(
+    payload.vendorId,
+    payload.menuImageDataUri,
+    payload.pageNumber,
+  )
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(outputText)
+  } catch (error) {
+    console.error('[extractMenuFromImagePage] Failed parsing model output:', outputText)
+    throw new Error('Menu image extraction model returned invalid JSON.')
+  }
+
+  const validation = ExtractMenuPageOutputSchema.safeParse(parsed)
+  if (!validation.success) {
+    console.error('[extractMenuFromImagePage] Output validation failed:', validation.error.flatten())
+    throw new Error('Menu image extraction result failed validation.')
+  }
+
+  const result = validation.data
+  if (!result.isReadable) {
+    console.log(
+      `[extractMenuFlow] Page ${payload.pageNumber ?? '?'} unreadable for vendor ${payload.vendorId}: ${result.readabilityIssue ?? 'unknown'}`,
+    )
+    return { ...result, extractedItems: [] }
+  }
+
+  console.log(
+    `[extractMenuFlow] Extracted ${result.extractedItems.length} items from image page ${payload.pageNumber ?? '?'} for vendor ${payload.vendorId}`,
+  )
+  return result
+}
+
+function parseDataUri(dataUri: string): { mimeType: string; base64: string } {
+  const match = dataUri.match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) throw new Error('Invalid data URI: missing base64 payload.')
+  return { mimeType: match[1], base64: match[2] }
 }
 
 async function extractViaOpenAiText(vendorId: string, menuText: string): Promise<string> {
@@ -141,8 +229,7 @@ async function extractViaGeminiPdf(vendorId: string, menuDataUri: string): Promi
     throw new Error('GOOGLE_AI_API_KEY is not configured. Unable to run PDF vision extraction.')
   }
 
-  // Genkit googleAI expects inlineData for PDF.
-  const base64 = menuDataUri.split(',')[1] || ''
+  const { mimeType, base64 } = parseDataUri(menuDataUri)
   if (!base64) throw new Error('Invalid menuDataUri: missing base64 payload.')
 
   const result = await ai.generate({
@@ -155,7 +242,7 @@ The attached PDF is a restaurant menu. Extract every orderable item and return O
       },
       {
         inlineData: {
-          mimeType: 'application/pdf',
+          mimeType,
           data: base64,
         },
       } as any,
@@ -167,6 +254,44 @@ The attached PDF is a restaurant menu. Extract every orderable item and return O
 
   const text = (result as any)?.text?.trim?.() || (result as any)?.output?.[0]?.content?.[0]?.text?.trim?.()
   if (!text) throw new Error('Gemini did not return any text for menu extraction.')
+  return text
+}
+
+async function extractViaGeminiImage(
+  vendorId: string,
+  menuImageDataUri: string,
+  pageNumber?: number,
+): Promise<string> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY
+  if (!apiKey) {
+    throw new Error('GOOGLE_AI_API_KEY is not configured. Unable to run image vision extraction.')
+  }
+
+  const { mimeType, base64 } = parseDataUri(menuImageDataUri)
+  const pageLabel = pageNumber ? `Page ${pageNumber}` : 'This page'
+
+  const result = await ai.generate({
+    model: menuExtractionModel,
+    prompt: [
+      { text: IMAGE_READABILITY_PROMPT },
+      {
+        text: `Vendor ID: ${vendorId}. ${pageLabel} of a photographed menu.
+Assess readability first, then extract items only if readable. Return ONLY JSON.`,
+      },
+      {
+        inlineData: {
+          mimeType,
+          data: base64,
+        },
+      } as any,
+      {
+        text: `JSON schema (respond with JSON only):\n${JSON.stringify(IMAGE_PAGE_RESPONSE_JSON_SCHEMA)}`,
+      },
+    ] as any,
+  })
+
+  const text = (result as any)?.text?.trim?.() || (result as any)?.output?.[0]?.content?.[0]?.text?.trim?.()
+  if (!text) throw new Error('Gemini did not return any text for menu image extraction.')
   return text
 }
  

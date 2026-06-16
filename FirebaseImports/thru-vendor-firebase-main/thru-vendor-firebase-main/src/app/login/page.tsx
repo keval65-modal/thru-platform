@@ -14,7 +14,7 @@ export default async function LoginPage() {
           </div>
           <CardTitle className="text-3xl font-bold text-foreground">Thru Vendor</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Sign in to manage your orders and inventory.
+            Sign in to manage your orders and store.
           </CardDescription>
         </CardHeader>
         <CardContent>

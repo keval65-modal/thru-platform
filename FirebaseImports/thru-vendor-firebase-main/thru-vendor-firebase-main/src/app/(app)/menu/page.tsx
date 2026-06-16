@@ -21,26 +21,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { menuService, MenuItem, supabase } from '@/lib/supabase'
-import { Plus, Edit, Trash2, Loader2, UploadCloud } from 'lucide-react'
+import { MenuItem } from '@/lib/supabase'
+import { Plus, Edit, Trash2, Loader2, UploadCloud, Camera, X, AlertTriangle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useSession } from '@/hooks/use-session'
 import { isMenuUploadEnabled } from '@/lib/vendor-features'
+import {
+  MAX_MENU_PAGES,
+  prepareMenuPageImage,
+  fileToDataUri,
+} from '@/lib/menu-image'
 import Link from 'next/link'
 
 // Fallback vendor ID for local testing (real session ID overrides this)
 const VENDOR_ID = '8c027b0f-394c-4c3e-a20c-56ad675366d2'
-const MENU_PDF_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_MENU_BUCKET ?? 'vendor-menu-pdfs'
 const MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024
-
-function slugifyFileName(name: string) {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-.]/g, '')
-    .replace(/-+/g, '-')
-}
 
 const CATEGORIES = [
   'Starters',
@@ -53,6 +48,21 @@ const CATEGORIES = [
   'Dinner',
   'Other'
 ]
+
+type MenuPagePhoto = {
+  id: string
+  previewUrl: string
+  file: File
+  label: string
+}
+
+type PageScanResult = {
+  pageNumber: number
+  fileName: string
+  isReadable: boolean
+  readabilityIssue?: string
+  itemsFound: number
+}
 
 export default function MenuPage() {
   const { toast } = useToast()
@@ -74,9 +84,14 @@ export default function MenuPage() {
     preparation_time: ''
   })
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
+  const [isCameraDialogOpen, setIsCameraDialogOpen] = useState(false)
   const [selectedMenuFile, setSelectedMenuFile] = useState<File | null>(null)
+  const [menuPagePhotos, setMenuPagePhotos] = useState<MenuPagePhoto[]>([])
   const [uploadingMenu, setUploadingMenu] = useState(false)
+  const [uploadingCameraMenu, setUploadingCameraMenu] = useState(false)
   const [replaceExistingMenu, setReplaceExistingMenu] = useState(true)
+  const [replaceExistingCameraMenu, setReplaceExistingCameraMenu] = useState(true)
+  const [lastScanResults, setLastScanResults] = useState<PageScanResult[] | null>(null)
 
   useEffect(() => {
     if (sessionLoading) return
@@ -95,12 +110,29 @@ export default function MenuPage() {
     }
   }, [isUploadDialogOpen])
 
+  useEffect(() => {
+    if (!isCameraDialogOpen) {
+      setMenuPagePhotos((prev) => {
+        prev.forEach((p) => URL.revokeObjectURL(p.previewUrl))
+        return []
+      })
+      setReplaceExistingCameraMenu(true)
+      setUploadingCameraMenu(false)
+      setLastScanResults(null)
+    }
+  }, [isCameraDialogOpen])
+
   const loadMenuItems = async () => {
     try {
       if (!activeVendorId) return
       setLoading(true)
-      const items = await menuService.getMenuItems(activeVendorId)
-      setMenuItems(items)
+      const response = await fetch('/api/menu/items')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'Failed to load menu items')
+      }
+      const payload = await response.json()
+      setMenuItems(payload.items || [])
     } catch (error) {
       console.error('Error loading menu items:', error)
       toast({
@@ -152,39 +184,15 @@ export default function MenuPage() {
     }
 
     try {
-      if (!MENU_PDF_BUCKET) {
-        throw new Error('Menu upload bucket is not configured. Please contact support.')
-      }
-
       setUploadingMenu(true)
-      const sanitizedName = slugifyFileName(selectedMenuFile.name || 'menu.pdf') || 'menu.pdf'
-      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      const uploadPath = `${activeVendorId}/${uniqueSuffix}-${sanitizedName}`
 
-      const { data: uploadResult, error: uploadError } = await supabase.storage
-        .from(MENU_PDF_BUCKET)
-        .upload(uploadPath, selectedMenuFile, {
-          contentType: selectedMenuFile.type || 'application/pdf',
-          upsert: true
-        })
-
-      if (uploadError) {
-        console.error('Failed to upload menu PDF to Supabase Storage:', uploadError)
-        throw new Error(uploadError.message || 'Failed to upload PDF to storage.')
-      }
+      const formData = new FormData()
+      formData.append('menuPdf', selectedMenuFile)
+      formData.append('replaceExisting', String(replaceExistingMenu))
 
       const response = await fetch('/api/menu/upload', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          storagePath: uploadResult?.path ?? uploadPath,
-          fileName: selectedMenuFile.name,
-          contentType: selectedMenuFile.type || 'application/pdf',
-          fileSize: selectedMenuFile.size,
-          replaceExisting: replaceExistingMenu
-        })
+        body: formData,
       })
 
       let result: any = null
@@ -216,6 +224,157 @@ export default function MenuPage() {
       })
     } finally {
       setUploadingMenu(false)
+    }
+  }
+
+  const addMenuPagePhotos = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files)
+    if (!fileArray.length) return
+
+    const remainingSlots = MAX_MENU_PAGES - menuPagePhotos.length
+    if (remainingSlots <= 0) {
+      toast({
+        title: 'Page limit reached',
+        description: `You can add up to ${MAX_MENU_PAGES} pages per scan.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const toAdd = fileArray.slice(0, remainingSlots)
+    if (fileArray.length > remainingSlots) {
+      toast({
+        title: 'Some photos skipped',
+        description: `Only ${remainingSlots} more page(s) can be added (max ${MAX_MENU_PAGES}).`,
+      })
+    }
+
+    try {
+      const prepared = await Promise.all(toAdd.map((file) => prepareMenuPageImage(file)))
+      setMenuPagePhotos((prev) => [
+        ...prev,
+        ...prepared.map((item, index) => ({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          previewUrl: item.previewUrl,
+          file: item.file,
+          label: `Page ${prev.length + index + 1}`,
+        })),
+      ])
+    } catch (error: any) {
+      toast({
+        title: 'Could not add photo',
+        description: error?.message || 'Please try another image.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const removeMenuPagePhoto = (id: string) => {
+    setMenuPagePhotos((prev) => {
+      const target = prev.find((p) => p.id === id)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      const next = prev.filter((p) => p.id !== id)
+      return next.map((p, index) => ({ ...p, label: `Page ${index + 1}` }))
+    })
+  }
+
+  const handleCameraMenuUpload = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!menuAllowed) {
+      toast({
+        title: 'Not available for your store type',
+        description: 'Menu upload is only available for Restaurants, Cafes, and Bakeries.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!activeVendorId) {
+      toast({
+        title: 'Vendor not detected',
+        description: 'Please refresh and try again.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!menuPagePhotos.length) {
+      toast({
+        title: 'No photos added',
+        description: 'Take or upload at least one menu page photo.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setUploadingCameraMenu(true)
+      setLastScanResults(null)
+
+      const pages = await Promise.all(
+        menuPagePhotos.map(async (photo, index) => ({
+          pageNumber: index + 1,
+          fileName: photo.label,
+          dataUri: await fileToDataUri(photo.file),
+        })),
+      )
+
+      const response = await fetch('/api/menu/upload-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pages,
+          replaceExisting: replaceExistingCameraMenu,
+        }),
+      })
+
+      let result: any = null
+      let fallbackBody = ''
+      try {
+        result = await response.json()
+      } catch {
+        fallbackBody = await response.text()
+      }
+
+      if (result?.pageResults) {
+        setLastScanResults(result.pageResults)
+      }
+
+      if (!response.ok) {
+        const unreadable = Array.isArray(result?.unreadablePages) ? result.unreadablePages : []
+        const detail =
+          unreadable.length > 0
+            ? unreadable
+                .map((p: PageScanResult) => `Page ${p.pageNumber}: ${p.readabilityIssue ?? 'Not readable'}`)
+                .join(' ')
+            : result?.error || fallbackBody
+
+        throw new Error(detail || 'Unable to process menu photos.')
+      }
+
+      if (result?.warning) {
+        toast({
+          title: 'Menu imported with warnings',
+          description: result.message,
+        })
+      } else {
+        toast({
+          title: 'Menu imported',
+          description: result?.message || `Added ${result?.inserted ?? 0} new items.`,
+        })
+      }
+
+      setIsCameraDialogOpen(false)
+      await loadMenuItems()
+    } catch (error: any) {
+      console.error('Error uploading menu photos:', error)
+      toast({
+        title: 'Scan failed',
+        description: error?.message || 'Unable to process these photos right now.',
+        variant: 'destructive',
+      })
+    } finally {
+      setUploadingCameraMenu(false)
     }
   }
 
@@ -253,13 +412,29 @@ export default function MenuPage() {
       }
 
       if (editingItem) {
-        await menuService.updateMenuItem(editingItem.id, itemData)
+        const response = await fetch('/api/menu/items', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingItem.id, ...itemData }),
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error || 'Failed to update menu item')
+        }
         toast({
           title: 'Success',
           description: 'Menu item updated successfully'
         })
       } else {
-        await menuService.createMenuItem(itemData)
+        const response = await fetch('/api/menu/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemData),
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error || 'Failed to create menu item')
+        }
         toast({
           title: 'Success',
           description: 'Menu item added successfully'
@@ -298,7 +473,13 @@ export default function MenuPage() {
     if (!confirm('Are you sure you want to delete this menu item?')) return
 
     try {
-      await menuService.deleteMenuItem(id)
+      const response = await fetch(`/api/menu/items?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'Failed to delete menu item')
+      }
       toast({
         title: 'Success',
         description: 'Menu item deleted successfully'
@@ -316,7 +497,15 @@ export default function MenuPage() {
 
   const toggleAvailability = async (id: string, currentStatus: boolean) => {
     try {
-      await menuService.toggleAvailability(id, !currentStatus)
+      const response = await fetch('/api/menu/items', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, is_available: !currentStatus }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'Failed to update availability')
+      }
       loadMenuItems()
     } catch (error) {
       console.error('Error toggling availability:', error)
@@ -518,7 +707,7 @@ export default function MenuPage() {
                   <p className="mt-1 text-sm text-muted-foreground">
                     {selectedMenuFile
                       ? `${selectedMenuFile.name} (${(selectedMenuFile.size / (1024 * 1024)).toFixed(2)} MB)`
-                      : 'Upload a clear PDF (max 10 MB).'}
+                      : 'Upload a clear PDF (max 25 MB).'}
                   </p>
                 </div>
 
@@ -552,6 +741,160 @@ export default function MenuPage() {
                       <UploadCloud className="mr-2 h-4 w-4" />
                     )}
                     {uploadingMenu ? 'Scanning...' : 'Scan & Import'}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isCameraDialogOpen} onOpenChange={setIsCameraDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Camera className="mr-2 h-4 w-4" />
+                Scan Menu Photos
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Scan Menu with Camera</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleCameraMenuUpload} className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Photograph each page of your menu. Add multiple pages for multi-page menus — we use AI vision to read items and flag any page that is not clear enough.
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+                  <div>
+                    <Input
+                      id="menuCameraCapture"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      disabled={uploadingCameraMenu || menuPagePhotos.length >= MAX_MENU_PAGES}
+                      onChange={(event) => {
+                        const files = event.target.files
+                        if (files?.length) void addMenuPagePhotos(files)
+                        event.target.value = ''
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={uploadingCameraMenu || menuPagePhotos.length >= MAX_MENU_PAGES}
+                      onClick={() => document.getElementById('menuCameraCapture')?.click()}
+                    >
+                      <Camera className="mr-2 h-4 w-4" />
+                      Take Photo
+                    </Button>
+                  </div>
+                  <div>
+                    <Input
+                      id="menuGalleryPick"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      className="hidden"
+                      disabled={uploadingCameraMenu || menuPagePhotos.length >= MAX_MENU_PAGES}
+                      onChange={(event) => {
+                        const files = event.target.files
+                        if (files?.length) void addMenuPagePhotos(files)
+                        event.target.value = ''
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={uploadingCameraMenu || menuPagePhotos.length >= MAX_MENU_PAGES}
+                      onClick={() => document.getElementById('menuGalleryPick')?.click()}
+                    >
+                      Add from Gallery
+                    </Button>
+                  </div>
+                </div>
+
+                {menuPagePhotos.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label>Pages ({menuPagePhotos.length}/{MAX_MENU_PAGES})</Label>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {menuPagePhotos.map((photo) => (
+                        <div key={photo.id} className="relative rounded-md border overflow-hidden">
+                          <img
+                            src={photo.previewUrl}
+                            alt={photo.label}
+                            className="h-28 w-full object-cover"
+                          />
+                          <div className="flex items-center justify-between gap-1 p-2 text-xs">
+                            <span className="font-medium truncate">{photo.label}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              disabled={uploadingCameraMenu}
+                              onClick={() => removeMenuPagePhoto(photo.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    No pages yet. Take a photo or pick images from your gallery.
+                  </div>
+                )}
+
+                {lastScanResults && lastScanResults.some((p) => !p.isReadable) && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-amber-800 text-sm font-medium">
+                      <AlertTriangle className="h-4 w-4" />
+                      Some pages were not readable
+                    </div>
+                    <ul className="text-xs text-amber-900 space-y-1 list-disc pl-4">
+                      {lastScanResults
+                        .filter((p) => !p.isReadable)
+                        .map((p) => (
+                          <li key={p.pageNumber}>
+                            {p.fileName}: {p.readabilityIssue ?? 'Retake this page in better lighting.'}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Replace existing menu</p>
+                    <p className="text-xs text-muted-foreground">
+                      Delete current items before importing from these photos.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={replaceExistingCameraMenu}
+                    onCheckedChange={setReplaceExistingCameraMenu}
+                    disabled={uploadingCameraMenu}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsCameraDialogOpen(false)}
+                    disabled={uploadingCameraMenu}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={!menuPagePhotos.length || uploadingCameraMenu}>
+                    {uploadingCameraMenu ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Camera className="mr-2 h-4 w-4" />
+                    )}
+                    {uploadingCameraMenu ? 'Scanning pages...' : 'Scan & Import'}
                   </Button>
                 </div>
               </form>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { DestinationForm } from '@/components/order/DestinationForm';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
 import { useToast } from '@/hooks/use-toast';
+import { isDepartureIsoInPast, PAST_DEPARTURE_TIME_MESSAGE } from '@/lib/departure-time';
 
 function parseCoordString(str: string | null): boolean {
   if (!str) return false;
@@ -20,7 +21,8 @@ export default function OrderDestinationPage() {
   const hasDest = parseCoordString(flow.selectedDestination);
   const hasDeparture = Boolean(flow.departureTime);
 
-  const canContinue = hasStart && hasDest && hasDeparture && flow.hydrated;
+  const canContinue =
+    hasStart && hasDest && hasDeparture && flow.hydrated && (flow.isImmediate || !isDepartureIsoInPast(flow.departureTime));
 
   const handleContinue = () => {
     if (!hasStart || !hasDest) {
@@ -36,6 +38,14 @@ export default function OrderDestinationPage() {
         variant: 'destructive',
         title: 'Set departure time',
         description: 'Choose Leaving now or Schedule for later.',
+      });
+      return;
+    }
+    if (!flow.isImmediate && isDepartureIsoInPast(flow.departureTime)) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid departure time',
+        description: PAST_DEPARTURE_TIME_MESSAGE,
       });
       return;
     }

@@ -1,4 +1,5 @@
 import type { OrderFlowState } from '@/types/order-flow';
+import { clampScheduledDepartureIso, isDepartureIsoInPast } from '@/lib/departure-time';
 
 const STORAGE_KEY = 'thru-order-flow-v1';
 
@@ -31,7 +32,11 @@ export function loadOrderFlowState(): OrderFlowState {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultOrderFlowState();
-    return { ...defaultOrderFlowState(), ...JSON.parse(raw) };
+    const merged = { ...defaultOrderFlowState(), ...JSON.parse(raw) } as OrderFlowState;
+    if (!merged.isImmediate && merged.departureTime && isDepartureIsoInPast(merged.departureTime)) {
+      merged.departureTime = clampScheduledDepartureIso(merged.departureTime);
+    }
+    return merged;
   } catch {
     return defaultOrderFlowState();
   }
