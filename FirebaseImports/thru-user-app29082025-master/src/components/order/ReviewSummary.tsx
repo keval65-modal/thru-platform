@@ -18,12 +18,10 @@ export function ReviewSummary() {
   const summary = React.useMemo(() => computeCartSummary(flow), [flow]);
   const pickupStores = React.useMemo(() => getPickupStores(flow), [flow]);
   const groceryCount = flow.groceryItems.length;
-  const categories = flow.categories.join(', ') || '—';
+  const orderedNeeds = summary.categories.map((category) => category.label).join(', ') || '—';
   const hasItems = summary.itemCount > 0;
   const medicineOnly =
-    flow.categories.includes('medicine') &&
-    !flow.categories.includes('grocery') &&
-    !flow.categories.includes('food');
+    summary.categories.length === 1 && summary.categories[0]?.category === 'medicine';
 
   const startLocation =
     flow.startLocationQuery || flow.selectedStartLocation || '';
@@ -116,7 +114,7 @@ export function ReviewSummary() {
         </p>
         <p>
           <span className="text-muted-foreground">Needs:</span>{' '}
-          <span className="font-medium capitalize">{categories}</span>
+          <span className="font-medium">{orderedNeeds}</span>
           {groceryCount > 0 && ` · ${groceryCount} grocery item${groceryCount > 1 ? 's' : ''}`}
         </p>
         {pickupStores.length > 0 && (

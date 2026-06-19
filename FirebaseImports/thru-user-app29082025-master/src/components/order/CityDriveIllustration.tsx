@@ -21,18 +21,59 @@ function RouteMarker() {
     <motion.g
       initial={{ offsetDistance: '0%' }}
       animate={{ offsetDistance: ['0%', '100%'] }}
-      transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
+      transition={{ duration: 6.4, repeat: Infinity, ease: 'easeInOut' }}
       style={{
         offsetPath: `path("${routePath}")`,
         offsetRotate: 'auto',
       }}
     >
-      <ellipse cx="0" cy="11" rx="24" ry="6" fill="hsl(var(--foreground) / 0.1)" />
-      <g transform="translate(-18 -16)">
-        <rect x="0" y="5" width="36" height="22" rx="11" fill="hsl(var(--primary))" />
-        <path d="M12 10 L22 16 L12 22 Z" fill="hsl(var(--primary-foreground))" />
-        <rect x="22" y="10" width="7" height="12" rx="3.5" fill="hsl(var(--primary-foreground) / 0.38)" />
+      <ellipse cx="0" cy="15" rx="27" ry="7" fill="hsl(var(--foreground) / 0.12)" />
+      <g transform="translate(-25 -17)">
+        <path
+          d="M8 16 L15 8 H35 L43 16 H47 C50 16 52 18 52 21 V28 H2 V21 C2 18 5 16 8 16 Z"
+          fill="hsl(var(--primary))"
+        />
+        <path d="M17 11 H26 V16 H12 Z" fill="hsl(var(--primary-foreground) / 0.8)" />
+        <path d="M29 11 H35 L40 16 H29 Z" fill="hsl(var(--primary-foreground) / 0.65)" />
+        <rect x="7" y="20" width="38" height="8" rx="4" fill="hsl(var(--primary))" />
+        <circle cx="14" cy="29" r="5" fill="hsl(var(--foreground))" />
+        <circle cx="40" cy="29" r="5" fill="hsl(var(--foreground))" />
+        <circle cx="14" cy="29" r="2" fill="hsl(var(--card))" />
+        <circle cx="40" cy="29" r="2" fill="hsl(var(--card))" />
       </g>
+    </motion.g>
+  );
+}
+
+function PickupPin({
+  x,
+  y,
+  label,
+  delay,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  delay: number;
+}) {
+  return (
+    <motion.g
+      initial={{ scale: 0.9, opacity: 0.72 }}
+      animate={{ scale: [0.9, 1.08, 0.9], opacity: [0.72, 1, 0.72] }}
+      transition={{ duration: 2.3, delay, repeat: Infinity, ease: 'easeInOut' }}
+      transform={`translate(${x} ${y})`}
+    >
+      <circle r="13" fill="hsl(var(--card))" stroke="hsl(var(--primary))" strokeWidth="3" />
+      <path d="M-4 -2 H5 V6 H-4 Z" fill="hsl(var(--primary))" />
+      <path d="M-2 -6 H7 V-1 H-2 Z" fill="hsl(var(--primary) / 0.7)" />
+      <text
+        x="0"
+        y="28"
+        textAnchor="middle"
+        className="fill-foreground text-[12px] font-semibold"
+      >
+        {label}
+      </text>
     </motion.g>
   );
 }
@@ -47,8 +88,8 @@ export function CityDriveIllustration() {
 
       <div className="relative z-10 grid min-h-[10.5rem] grid-cols-[1fr_auto] gap-3 px-5 py-4">
         <div className="flex flex-col justify-end pb-1">
-          <p className="text-sm font-semibold leading-snug text-foreground">Just pickup and go!</p>
-          <p className="text-xs font-medium text-primary">We&apos;ve got you.</p>
+          <p className="text-sm font-semibold leading-snug text-foreground">Route planned. Pickups ready.</p>
+          <p className="text-xs font-medium text-primary">Drive-thru stops on your way.</p>
         </div>
 
         <div className="relative h-32 w-64 max-w-[58vw]" aria-hidden>
@@ -70,6 +111,36 @@ export function CityDriveIllustration() {
 
             <Skyline />
 
+            <motion.g
+              initial={{ opacity: 0.7, y: 2 }}
+              animate={{ opacity: [0.7, 1, 0.7], y: [2, 0, 2] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <rect
+                x="232"
+                y="18"
+                width="124"
+                height="52"
+                rx="14"
+                fill="hsl(var(--card) / 0.86)"
+                stroke="hsl(var(--primary) / 0.18)"
+              />
+              <text x="248" y="38" className="fill-foreground text-[12px] font-bold">
+                Planning route
+              </text>
+              <rect x="248" y="48" width="78" height="5" rx="2.5" fill="hsl(var(--primary) / 0.18)" />
+              <motion.rect
+                x="248"
+                y="48"
+                height="5"
+                rx="2.5"
+                fill="hsl(var(--primary))"
+                initial={{ width: 20 }}
+                animate={{ width: [20, 72, 20] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            </motion.g>
+
             <path
               d={routePath}
               fill="none"
@@ -86,8 +157,8 @@ export function CityDriveIllustration() {
               filter="url(#route-glow)"
               initial={{ pathLength: 0.15, pathOffset: 0 }}
               animate={{ pathOffset: [0, 1] }}
-              transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
-              style={{ pathLength: 0.28 }}
+              transition={{ duration: 3.8, repeat: Infinity, ease: 'linear' }}
+              style={{ pathLength: 0.34 }}
             />
 
             <motion.circle
@@ -100,6 +171,8 @@ export function CityDriveIllustration() {
               animate={{ r: [7, 9, 7] }}
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
             />
+            <PickupPin x={172} y={112} label="Food" delay={0.2} />
+            <PickupPin x={342} y={104} label="Pickup" delay={0.8} />
             <motion.circle
               cx="462"
               cy="74"
