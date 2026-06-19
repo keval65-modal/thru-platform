@@ -109,7 +109,9 @@ export function MedicineQuantitySuggestions({
       )}
 
       {!loading && !showStrengths && packSizes.length === 0 && (
-        <p className="text-xs text-muted-foreground">Enter a medicine name to see available options.</p>
+        <p className="text-xs text-muted-foreground">
+          No verified online strengths or pack sizes found yet. Type the exact brand/name or enter details manually.
+        </p>
       )}
     </div>
   );

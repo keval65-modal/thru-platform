@@ -223,35 +223,6 @@ export function extractMedicinePackSizes(texts: string[]): MedicineQuantitySugge
   return results.slice(0, 6);
 }
 
-function fallbackPackSizes(medicineName: string): MedicineQuantitySuggestion[] {
-  const lower = medicineName.toLowerCase();
-  if (lower.includes('syrup') || lower.includes('suspension') || lower.includes('drops')) {
-    return [
-      { quantity: 1, unit: 'bottle', label: '60 ml bottle', isPopular: true },
-      { quantity: 1, unit: 'bottle', label: '100 ml bottle' },
-      { quantity: 2, unit: 'bottle', label: '2 bottles' },
-    ];
-  }
-  return [
-    { quantity: 1, unit: 'strip', label: '1 strip (10 tablets)', isPopular: true },
-    { quantity: 1, unit: 'strip', label: '1 strip (15 tablets)', isPopular: true },
-    { quantity: 2, unit: 'strip', label: '2 strips' },
-    { quantity: 1, unit: 'strip', label: '1 strip (30 tablets)' },
-  ];
-}
-
-function fallbackStrengths(medicineName: string): MedicineDosageSuggestion[] {
-  const lower = medicineName.toLowerCase();
-  if (lower.includes('syrup') || lower.includes('suspension') || lower.includes('drops')) {
-    return [];
-  }
-  return [
-    { label: '500 mg', value: '500mg', isPopular: true },
-    { label: '650 mg', value: '650mg', isPopular: true },
-    { label: '1000 mg', value: '1000mg' },
-  ];
-}
-
 async function fetchGoogleShoppingTexts(medicineName: string): Promise<string[]> {
   const query = `${medicineName} medicine tablet strip syrup mg pharmacy India`;
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=shop&hl=en`;
@@ -330,8 +301,8 @@ export async function searchMedicineOptionsFromGoogle(
   const packSizes = extractMedicinePackSizes(corpus);
 
   return {
-    strengths: strengths.length > 0 ? strengths : fallbackStrengths(trimmed),
-    packSizes: packSizes.length > 0 ? packSizes : fallbackPackSizes(trimmed),
+    strengths,
+    packSizes,
   };
 }
 

@@ -11,6 +11,17 @@ import {
 import type { PlacedOrder, VendorOrderPortion } from '@/lib/orderModels';
 import type { OrderFlowState } from '@/types/order-flow';
 
+function formatGroceryOrderDetails(item: OrderFlowState['groceryItems'][number]): string {
+  return [
+    item.brand ? `Brand: ${item.brand}` : null,
+    item.packSize ? `Pack: ${item.packSize}` : null,
+    `Qty: ${item.quantity} ${item.unit}`,
+    item.productSource ? `Source: ${item.productSource}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 async function fetchVendorLocations(
   vendorIds: string[]
 ): Promise<Map<string, { latitude: number; longitude: number }>> {
@@ -72,7 +83,7 @@ function buildVendorPortions(
         quantity: item.quantity,
         pricePerItem: estimateGroceryUnitPrice(item.unit),
         totalPrice: estimateGroceryLinePrice(item),
-        details: `${item.quantity} ${item.unit}`,
+        details: formatGroceryOrderDetails(item),
       })),
     });
   }

@@ -15,6 +15,9 @@ export type GroceryUnit =
 export type GroceryListItem = {
   id: string;
   name: string;
+  brand?: string;
+  packSize?: string;
+  productSource?: string;
   quantity: number;
   unit: GroceryUnit;
   /** When false, unit chip is hidden (e.g. bread sold by piece) */
