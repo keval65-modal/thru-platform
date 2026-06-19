@@ -2,142 +2,117 @@
 
 import { motion } from 'framer-motion';
 
-const buildings = [
-  { x: 0, w: 28, h: 52 },
-  { x: 34, w: 22, h: 72 },
-  { x: 62, w: 18, h: 44 },
-  { x: 86, w: 32, h: 64 },
-  { x: 124, w: 20, h: 80 },
-  { x: 150, w: 26, h: 48 },
-  { x: 182, w: 24, h: 68 },
-  { x: 212, w: 30, h: 56 },
-  { x: 248, w: 18, h: 76 },
-  { x: 272, w: 28, h: 42 },
-  { x: 306, w: 22, h: 62 },
-  { x: 334, w: 26, h: 50 },
-  { x: 366, w: 20, h: 74 },
-  { x: 392, w: 32, h: 58 },
-  { x: 430, w: 24, h: 46 },
-  { x: 460, w: 28, h: 70 },
-];
+const routePath = 'M38 116 C88 62 128 168 180 108 S282 52 340 105 S408 152 462 74';
 
-function BuildingLayer({
-  opacity,
-  duration,
-  className,
-}: {
-  opacity: number;
-  duration: number;
-  className?: string;
-}) {
+function Skyline() {
   return (
-    <motion.div
-      className={`absolute bottom-10 left-0 flex h-24 w-[200%] ${className ?? ''}`}
-      animate={{ x: ['0%', '-50%'] }}
-      transition={{ duration, repeat: Infinity, ease: 'linear' }}
-      aria-hidden
-    >
-      {[0, 1].map((copy) => (
-        <svg
-          key={copy}
-          viewBox="0 0 488 96"
-          className="h-full w-1/2 shrink-0"
-          preserveAspectRatio="none"
-        >
-          {buildings.map((building, index) => (
-            <g key={`${copy}-${index}`}>
-              <rect
-                x={building.x}
-                y={96 - building.h}
-                width={building.w}
-                height={building.h}
-                rx="2"
-                fill={`hsl(var(--foreground) / ${opacity})`}
-              />
-              {Array.from({ length: Math.floor(building.h / 14) }).map((_, row) =>
-                Array.from({ length: Math.max(1, Math.floor(building.w / 10)) }).map((__, col) => (
-                  <rect
-                    key={`${row}-${col}`}
-                    x={building.x + 4 + col * 8}
-                    y={96 - building.h + 6 + row * 14}
-                    width="4"
-                    height="6"
-                    rx="0.5"
-                    fill={`hsl(var(--primary) / ${opacity * 0.35})`}
-                  />
-                )),
-              )}
-            </g>
-          ))}
-        </svg>
-      ))}
-    </motion.div>
+    <g opacity="0.16">
+      <path
+        d="M0 148 H28 V112 H58 V130 H84 V96 H126 V122 H150 V82 H196 V118 H224 V102 H252 V132 H286 V92 H328 V116 H354 V70 H392 V124 H426 V104 H456 V136 H488 V148 Z"
+        fill="hsl(var(--foreground))"
+      />
+      <path d="M0 148 H488" stroke="hsl(var(--foreground))" strokeOpacity="0.25" />
+    </g>
   );
 }
 
-function SideViewCar() {
+function RouteMarker() {
   return (
-    <svg viewBox="0 0 88 36" className="h-9 w-[4.5rem] drop-shadow-md" aria-hidden>
-      <ellipse cx="44" cy="32" rx="38" ry="3" fill="hsl(var(--foreground) / 0.08)" />
-      <path
-        d="M8 22 C8 14 18 10 30 10 L52 10 C62 10 72 12 78 18 L82 22 L82 26 C82 28 80 30 78 30 L12 30 C10 30 8 28 8 26 Z"
-        fill="hsl(var(--primary))"
-      />
-      <path d="M28 12 L48 12 L52 20 L24 20 Z" fill="hsl(var(--primary-foreground) / 0.9)" />
-      <circle cx="24" cy="28" r="5" fill="hsl(var(--foreground))" />
-      <circle cx="24" cy="28" r="2" fill="hsl(var(--muted))" />
-      <circle cx="64" cy="28" r="5" fill="hsl(var(--foreground))" />
-      <circle cx="64" cy="28" r="2" fill="hsl(var(--muted))" />
-      <rect x="76" y="18" width="4" height="3" rx="1" fill="#fbbf24" />
-      <rect x="6" y="20" width="3" height="2" rx="0.5" fill="#ef4444" />
-    </svg>
+    <motion.g
+      initial={{ offsetDistance: '0%' }}
+      animate={{ offsetDistance: ['0%', '100%'] }}
+      transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', repeatDelay: 0.4 }}
+      style={{
+        offsetPath: `path("${routePath}")`,
+        offsetRotate: 'auto',
+      }}
+    >
+      <ellipse cx="0" cy="11" rx="24" ry="6" fill="hsl(var(--foreground) / 0.1)" />
+      <g transform="translate(-18 -16)">
+        <rect x="0" y="5" width="36" height="22" rx="11" fill="hsl(var(--primary))" />
+        <path d="M12 10 L22 16 L12 22 Z" fill="hsl(var(--primary-foreground))" />
+        <rect x="22" y="10" width="7" height="12" rx="3.5" fill="hsl(var(--primary-foreground) / 0.38)" />
+      </g>
+    </motion.g>
   );
 }
 
 export function CityDriveIllustration() {
   return (
-    <div className="relative mt-2 flex min-h-[11rem] flex-col items-center justify-end overflow-hidden rounded-2xl pb-3 pt-6">
+    <div className="relative mt-2 overflow-hidden rounded-[1.35rem] border border-primary/10 bg-card/70 shadow-sm">
       <div
-        className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-b from-primary/5 via-transparent to-muted/30"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,hsl(var(--primary)/0.14),transparent_34%),linear-gradient(180deg,hsl(var(--primary)/0.05),hsl(var(--muted)/0.4))]"
         aria-hidden
       />
 
-      <BuildingLayer opacity={0.12} duration={28} />
-      <BuildingLayer opacity={0.08} duration={42} className="bottom-8 scale-110" />
+      <div className="relative z-10 grid min-h-[10.5rem] grid-cols-[1fr_auto] gap-3 px-5 py-4">
+        <div className="flex flex-col justify-end pb-1">
+          <p className="text-sm font-semibold leading-snug text-foreground">Just pickup and go.</p>
+          <p className="text-xs font-medium text-primary">We&apos;ve got you.</p>
+        </div>
 
-      <div className="absolute bottom-0 left-0 right-0 h-12 bg-muted/50" aria-hidden />
-      <motion.div className="absolute bottom-[2.65rem] left-0 right-0 h-0.5 overflow-hidden" aria-hidden>
-        <motion.div
-          className="flex h-full w-[200%]"
-          animate={{ x: ['0%', '-50%'] }}
-          transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
-        >
-          {[0, 1].map((copy) => (
-            <div key={copy} className="flex h-full w-1/2 shrink-0 gap-3 px-1">
-              {Array.from({ length: 24 }).map((_, index) => (
-                <div key={index} className="h-full w-4 rounded-full bg-foreground/15" />
-              ))}
-            </div>
-          ))}
-        </motion.div>
-      </motion.div>
+        <div className="relative h-32 w-64 max-w-[58vw]" aria-hidden>
+          <svg viewBox="0 0 488 170" className="h-full w-full overflow-visible">
+            <defs>
+              <linearGradient id="route-gradient" x1="38" y1="116" x2="462" y2="74" gradientUnits="userSpaceOnUse">
+                <stop stopColor="hsl(var(--primary))" stopOpacity="0.25" />
+                <stop offset="0.45" stopColor="hsl(var(--primary))" />
+                <stop offset="1" stopColor="hsl(var(--accent))" />
+              </linearGradient>
+              <filter id="route-glow" x="-20%" y="-70%" width="140%" height="240%">
+                <feGaussianBlur stdDeviation="5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
 
-      <motion.div
-        className="absolute bottom-[2.35rem] left-0 z-10"
-        animate={{ x: ['-15%', '115%'], y: [0, -1.5, 0, -1, 0] }}
-        transition={{
-          x: { duration: 5.5, repeat: Infinity, ease: 'linear' },
-          y: { duration: 0.6, repeat: Infinity, ease: 'easeInOut' },
-        }}
-        aria-hidden
-      >
-        <SideViewCar />
-      </motion.div>
+            <Skyline />
 
-      <p className="relative z-10 px-4 text-center text-sm font-medium leading-snug text-muted-foreground">
-        <span className="text-foreground">Just pickup and go!</span>
-        <span className="block text-primary">We&apos;ve got you.</span>
-      </p>
+            <path
+              d={routePath}
+              fill="none"
+              stroke="hsl(var(--foreground) / 0.08)"
+              strokeWidth="14"
+              strokeLinecap="round"
+            />
+            <motion.path
+              d={routePath}
+              fill="none"
+              stroke="url(#route-gradient)"
+              strokeWidth="4"
+              strokeLinecap="round"
+              filter="url(#route-glow)"
+              initial={{ pathLength: 0.15, pathOffset: 0 }}
+              animate={{ pathOffset: [0, 1] }}
+              transition={{ duration: 2.8, repeat: Infinity, ease: 'linear' }}
+              style={{ pathLength: 0.28 }}
+            />
+
+            <motion.circle
+              cx="38"
+              cy="116"
+              r="8"
+              fill="hsl(var(--card))"
+              stroke="hsl(var(--primary))"
+              strokeWidth="4"
+              animate={{ r: [7, 9, 7] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <motion.circle
+              cx="462"
+              cy="74"
+              r="8"
+              fill="hsl(var(--primary))"
+              animate={{ opacity: [0.55, 1, 0.55], scale: [0.9, 1.08, 0.9] }}
+              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
+
+            <RouteMarker />
+          </svg>
+        </div>
+      </div>
     </div>
   );
 }
