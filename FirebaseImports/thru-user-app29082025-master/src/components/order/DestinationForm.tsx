@@ -79,7 +79,7 @@ export function DestinationForm() {
       onPick: (addr: string, coords: string) => void
     ) => {
       if (!container || container.querySelector(`#${id}`)) return;
-      container.innerHTML = `<input id="${id}" class="flex h-12 w-full rounded-xl border-0 bg-muted/50 pl-10 pr-3 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" placeholder="${placeholder}" />`;
+      container.innerHTML = `<input id="${id}" class="flex h-10 w-full rounded-xl border-0 bg-muted/50 pl-9 pr-14 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" placeholder="${placeholder}" />`;
       const input = document.getElementById(id) as HTMLInputElement;
       const ac = new googleObj.maps.places.Autocomplete(input, {
         fields: ['formatted_address', 'geometry'],
@@ -215,15 +215,15 @@ export function DestinationForm() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Where are you going?</h2>
-        <p className="text-muted-foreground text-sm mt-1">
+        <h2 className="text-xl font-bold tracking-tight">Where are you going?</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Your destination shapes everything we find along the way.
         </p>
       </div>
 
-      <div className="relative space-y-3">
+      <div className="relative space-y-2">
         <div className="relative">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
             <LocateFixed className={cn('h-4 w-4 text-primary', fetchingLocation && 'animate-pulse')} />
@@ -240,9 +240,9 @@ export function DestinationForm() {
 
         <div className="relative">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
-            <MapPin className="h-5 w-5 text-accent" />
+            <MapPin className="h-4 w-4 text-accent" />
           </div>
-          <div ref={destRef} className="w-full [&_input]:pl-10 [&_input]:text-lg [&_input]:font-medium" />
+          <div ref={destRef} className="w-full [&_input]:pl-9 [&_input]:text-sm [&_input]:font-medium" />
         </div>
 
         <Button
@@ -279,11 +279,11 @@ export function DestinationForm() {
         }}
       />
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           variant={flow.isImmediate ? 'default' : 'outline'}
-          className="rounded-xl h-11 flex-1 min-w-[140px] justify-start"
+          className="h-10 min-w-[130px] flex-1 justify-start rounded-xl text-sm"
           onClick={() => {
             if (!flow.isImmediate) handleImmediate(true);
           }}
@@ -294,7 +294,7 @@ export function DestinationForm() {
         <Button
           type="button"
           variant={!flow.isImmediate ? 'default' : 'outline'}
-          className="rounded-xl h-11 flex-1 min-w-[140px]"
+          className="h-10 min-w-[130px] flex-1 rounded-xl text-sm"
           onClick={() => {
             handleImmediate(false);
             setShowTimePicker(true);
@@ -312,7 +312,7 @@ export function DestinationForm() {
       />
 
       <div
-        className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer"
+        className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
         onClick={() =>
           toast({
             title: 'Add stops',

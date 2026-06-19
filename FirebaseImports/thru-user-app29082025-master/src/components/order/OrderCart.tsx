@@ -143,17 +143,17 @@ export function OrderCart() {
           type="button"
           onClick={() => setOpen(true)}
           className={cn(
-            'pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-between gap-3',
-            'rounded-2xl border border-primary/20 bg-background px-4 py-3 shadow-lg',
+            'pointer-events-auto mx-auto flex w-full max-w-lg items-center justify-between gap-2',
+            'rounded-2xl border border-primary/20 bg-background px-3 py-2 shadow-lg',
             'hover:border-primary/35 active:scale-[0.99] transition-all'
           )}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
               <ShoppingBag className="h-4 w-4 text-primary" />
             </span>
             <div className="text-left min-w-0">
-              <p className="text-sm font-semibold leading-tight">
+              <p className="text-xs font-semibold leading-tight">
                 {hasItems
                   ? `${summary.itemCount} item${summary.itemCount === 1 ? '' : 's'} in cart`
                   : 'Your cart'}
@@ -167,7 +167,7 @@ export function OrderCart() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {hasItems && (
-              <span className="text-lg font-bold tabular-nums text-primary">
+              <span className="text-base font-bold tabular-nums text-primary">
                 {formatCartInr(summary.total)}
               </span>
             )}

@@ -127,7 +127,7 @@ export function SavedDestinationsPanel({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <Label className="text-xs text-muted-foreground font-medium">Saved places</Label>
         {destinationDraft && firebaseUid && (
@@ -135,10 +135,10 @@ export function SavedDestinationsPanel({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 text-xs px-2"
+            className="h-6 px-1.5 text-xs"
             onClick={() => openSaveDialog('other')}
           >
-            <BookmarkPlus className="h-3.5 w-3.5 mr-1" />
+            <BookmarkPlus className="mr-1 h-3 w-3" />
             Save destination
           </Button>
         )}
@@ -161,7 +161,7 @@ export function SavedDestinationsPanel({
           Loading saved places…
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {PRESET_DESTINATION_LABELS.map((preset) => {
             const saved = presetMap.get(preset.type);
             return (
@@ -170,7 +170,7 @@ export function SavedDestinationsPanel({
                   type="button"
                   variant={saved ? 'secondary' : 'outline'}
                   size="sm"
-                  className="h-8 text-xs"
+                  className="h-7 rounded-lg px-2 text-xs"
                   onClick={() => {
                     if (saved) onApplyDestination(saved);
                     else openSaveDialog(preset.type);
@@ -185,7 +185,7 @@ export function SavedDestinationsPanel({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     onClick={() => onDeleteDestination(saved.id)}
                     aria-label={`Remove ${preset.title}`}
                   >
@@ -202,7 +202,7 @@ export function SavedDestinationsPanel({
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="h-8 text-xs max-w-[140px] truncate"
+                className="h-7 max-w-[130px] truncate rounded-lg px-2 text-xs"
                 onClick={() => onApplyDestination(dest)}
                 title={dest.address}
               >
@@ -215,7 +215,7 @@ export function SavedDestinationsPanel({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
                 onClick={() => onDeleteDestination(dest.id)}
                 aria-label={`Remove ${dest.displayLabel}`}
               >
@@ -228,7 +228,7 @@ export function SavedDestinationsPanel({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 text-xs"
+            className="h-7 rounded-lg px-2 text-xs"
             onClick={() => openSaveDialog('other')}
           >
             + Other

@@ -62,13 +62,13 @@ function SkylineLayer({
 function LaneMarks() {
   return (
     <motion.div
-      className="absolute bottom-[2.55rem] left-0 flex w-[200%] gap-7"
+      className="absolute bottom-[1.9rem] left-0 flex w-[200%] gap-6"
       animate={{ x: ['0%', '-50%'] }}
       transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
       aria-hidden
     >
       {Array.from({ length: 28 }).map((_, index) => (
-        <span key={index} className="h-1 w-8 shrink-0 rounded-full bg-background/70" />
+        <span key={index} className="h-1 w-7 shrink-0 rounded-full bg-background/70" />
       ))}
     </motion.div>
   );
@@ -77,12 +77,12 @@ function LaneMarks() {
 function DrivingCar() {
   return (
     <motion.div
-      className="absolute bottom-[2.05rem] left-[18%] z-20"
+      className="absolute bottom-[1.35rem] left-[18%] z-20"
       animate={{ y: [0, -2, 0], rotate: [-1, 0.6, -1] }}
       transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
       aria-hidden
     >
-      <svg viewBox="0 0 112 58" className="h-14 w-28 drop-shadow-lg">
+      <svg viewBox="0 0 112 58" className="h-11 w-24 drop-shadow-lg">
         <ellipse cx="55" cy="51" rx="44" ry="5" fill="hsl(var(--foreground) / 0.13)" />
         <path
           d="M17 31 L32 14 H70 C81 14 91 20 98 31 L103 32 C107 33 110 37 110 42 V48 H4 V40 C4 35 10 31 17 31 Z"
@@ -117,11 +117,11 @@ function DrivingCar() {
 
 function BenefitTicker() {
   return (
-    <div className="relative h-6 overflow-hidden text-xs font-semibold text-primary">
+    <div className="relative h-5 overflow-hidden text-[11px] font-semibold text-primary">
       {benefitLines.map((line, index) => (
         <motion.span
           key={line}
-          className="absolute left-0 top-0 rounded-full bg-primary/10 px-2.5 py-1"
+          className="absolute left-0 top-0 rounded-full bg-primary/10 px-2 py-0.5"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: [0, 1, 1, 0], y: [12, 0, 0, -12] }}
           transition={{
@@ -141,26 +141,26 @@ function BenefitTicker() {
 
 export function CityDriveIllustration() {
   return (
-    <div className="relative mt-2 overflow-hidden rounded-[1.35rem] border border-primary/10 bg-card/80 shadow-md">
+    <div className="relative overflow-hidden rounded-[1.1rem] border border-primary/10 bg-card/80 shadow-md">
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_24%_12%,hsl(var(--primary)/0.16),transparent_32%),radial-gradient(circle_at_78%_18%,hsl(var(--accent)/0.12),transparent_30%),linear-gradient(180deg,hsl(var(--primary)/0.04),hsl(var(--muted)/0.38))]"
         aria-hidden
       />
 
-      <div className="relative z-10 min-h-[14rem] px-5 pb-4 pt-4">
-        <div className="relative z-30 max-w-[82%] space-y-2">
-          <p className="text-[15px] font-bold leading-snug text-foreground">
+      <div className="relative z-10 min-h-[10.5rem] px-4 pb-3 pt-3">
+        <div className="relative z-30 max-w-[84%] space-y-1.5">
+          <p className="text-[13px] font-bold leading-snug text-foreground">
             Plan your route, Add Items, Pickup On the Go!
           </p>
           <BenefitTicker />
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 h-36 overflow-hidden" aria-hidden>
-          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-b from-muted/20 to-muted/70" />
-          <SkylineLayer duration={34} opacity={0.12} bottom="4.5rem" scale={0.9} />
-          <SkylineLayer duration={18} opacity={0.22} bottom="3.15rem" />
-          <div className="absolute inset-x-0 bottom-0 h-16 bg-foreground/10" />
-          <div className="absolute inset-x-0 bottom-16 h-px bg-foreground/10" />
+        <div className="absolute inset-x-0 bottom-0 h-28 overflow-hidden" aria-hidden>
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-muted/20 to-muted/70" />
+          <SkylineLayer duration={34} opacity={0.12} bottom="3.45rem" scale={0.72} />
+          <SkylineLayer duration={18} opacity={0.22} bottom="2.25rem" scale={0.82} />
+          <div className="absolute inset-x-0 bottom-0 h-12 bg-foreground/10" />
+          <div className="absolute inset-x-0 bottom-12 h-px bg-foreground/10" />
           <LaneMarks />
           <DrivingCar />
         </div>

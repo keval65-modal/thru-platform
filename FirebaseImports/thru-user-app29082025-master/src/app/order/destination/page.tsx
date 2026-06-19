@@ -54,12 +54,12 @@ export default function OrderDestinationPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <DestinationForm />
 
       <Button
         type="button"
-        className="w-full h-12 rounded-xl text-base font-semibold"
+        className="h-11 w-full rounded-xl text-sm font-semibold"
         disabled={!canContinue}
         onClick={handleContinue}
       >

@@ -26,7 +26,7 @@ export default function OrderLayout({ children }: { children: React.ReactNode })
         />
       )}
       <div className="min-h-screen bg-background pb-36">
-        <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/40 px-4 py-3">
+        <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/40 px-4 py-2">
           <div className="max-w-lg mx-auto flex items-center gap-3">
             <span className="font-bold text-lg text-primary">Thru</span>
             <div className="flex-1">
@@ -34,7 +34,7 @@ export default function OrderLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
         </header>
-        <main className="max-w-lg mx-auto px-4 py-6">{children}</main>
+        <main className="max-w-lg mx-auto px-4 py-4">{children}</main>
       </div>
       <OrderCart />
       <BottomNav />
