@@ -2,101 +2,140 @@
 
 import { motion } from 'framer-motion';
 
-const routePath = 'M30 154 C86 110 150 174 214 138 S324 94 386 132 S456 170 492 96';
 const benefitLines = ['Items at MRP', 'No extra charges', 'No parking hassles'];
 
-function Skyline() {
+const skyline = [
+  { width: 26, height: 44 },
+  { width: 34, height: 66 },
+  { width: 24, height: 52 },
+  { width: 42, height: 78 },
+  { width: 30, height: 58 },
+  { width: 36, height: 92 },
+  { width: 28, height: 64 },
+  { width: 44, height: 74 },
+  { width: 24, height: 50 },
+  { width: 38, height: 84 },
+  { width: 32, height: 56 },
+  { width: 46, height: 70 },
+];
+
+function SkylineLayer({
+  duration,
+  opacity,
+  bottom,
+  scale = 1,
+}: {
+  duration: number;
+  opacity: number;
+  bottom: string;
+  scale?: number;
+}) {
   return (
-    <g opacity="0.18">
-      <path
-        d="M0 166 H26 V124 H58 V146 H82 V102 H122 V136 H146 V86 H194 V132 H222 V112 H254 V150 H286 V94 H330 V128 H358 V76 H398 V142 H428 V112 H462 V154 H520 V166 Z"
-        fill="hsl(var(--foreground))"
-      />
-      <path d="M0 166 H520" stroke="hsl(var(--foreground))" strokeOpacity="0.25" />
-      <path d="M96 118 H110 M166 102 H180 M306 112 H320 M374 94 H388" stroke="hsl(var(--card))" strokeOpacity="0.7" strokeWidth="5" />
-    </g>
+    <motion.div
+      className="absolute left-0 flex w-[200%] items-end gap-2"
+      style={{ bottom, opacity, scale }}
+      animate={{ x: ['0%', '-50%'] }}
+      transition={{ duration, repeat: Infinity, ease: 'linear' }}
+      aria-hidden
+    >
+      {[0, 1].map((copy) => (
+        <div key={copy} className="flex w-1/2 shrink-0 items-end justify-around gap-2 px-2">
+          {skyline.map((building, index) => (
+            <div
+              key={`${copy}-${index}`}
+              className="relative rounded-t-sm bg-foreground/70"
+              style={{ width: building.width, height: building.height }}
+            >
+              <div className="absolute inset-x-1 top-3 grid grid-cols-2 gap-1">
+                {Array.from({ length: Math.max(2, Math.floor(building.height / 18)) }).map((_, windowIndex) => (
+                  <span key={windowIndex} className="h-1.5 rounded-[1px] bg-background/45" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </motion.div>
   );
 }
 
-function RouteMarker() {
+function LaneMarks() {
   return (
-    <motion.g
-      initial={{ offsetDistance: '0%' }}
-      animate={{ offsetDistance: ['0%', '100%'] }}
-      transition={{ duration: 6.8, repeat: Infinity, ease: 'easeInOut' }}
-      style={{
-        offsetPath: `path("${routePath}")`,
-        offsetRotate: 'auto',
-      }}
+    <motion.div
+      className="absolute bottom-[2.55rem] left-0 flex w-[200%] gap-7"
+      animate={{ x: ['0%', '-50%'] }}
+      transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
+      aria-hidden
     >
-      <ellipse cx="0" cy="18" rx="34" ry="8" fill="hsl(var(--foreground) / 0.13)" />
-      <g transform="translate(-32 -20)">
+      {Array.from({ length: 28 }).map((_, index) => (
+        <span key={index} className="h-1 w-8 shrink-0 rounded-full bg-background/70" />
+      ))}
+    </motion.div>
+  );
+}
+
+function DrivingCar() {
+  return (
+    <motion.div
+      className="absolute bottom-[2.05rem] left-[18%] z-20"
+      animate={{ y: [0, -2, 0], rotate: [-1, 0.6, -1] }}
+      transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut' }}
+      aria-hidden
+    >
+      <svg viewBox="0 0 112 58" className="h-14 w-28 drop-shadow-lg">
+        <ellipse cx="55" cy="51" rx="44" ry="5" fill="hsl(var(--foreground) / 0.13)" />
         <path
-          d="M9 18 L19 7 H43 L54 18 H60 C64 18 67 21 67 25 V34 H2 V25 C2 21 5 18 9 18 Z"
+          d="M17 31 L32 14 H70 C81 14 91 20 98 31 L103 32 C107 33 110 37 110 42 V48 H4 V40 C4 35 10 31 17 31 Z"
           fill="hsl(var(--primary))"
         />
-        <path d="M21 11 H32 V18 H14 Z" fill="hsl(var(--primary-foreground) / 0.82)" />
-        <path d="M36 11 H43 L50 18 H36 Z" fill="hsl(var(--primary-foreground) / 0.68)" />
-        <rect x="8" y="23" width="48" height="11" rx="5.5" fill="hsl(var(--primary))" />
-        <circle cx="18" cy="35" r="6" fill="hsl(var(--foreground))" />
-        <circle cx="50" cy="35" r="6" fill="hsl(var(--foreground))" />
-        <circle cx="18" cy="35" r="2.5" fill="hsl(var(--card))" />
-        <circle cx="50" cy="35" r="2.5" fill="hsl(var(--card))" />
-      </g>
-    </motion.g>
+        <path d="M35 19 H53 V31 H25 Z" fill="hsl(var(--primary-foreground) / 0.84)" />
+        <path d="M58 19 H70 C78 20 84 25 88 31 H58 Z" fill="hsl(var(--primary-foreground) / 0.68)" />
+        <rect x="15" y="34" width="82" height="14" rx="7" fill="hsl(var(--primary))" />
+        <circle cx="30" cy="48" r="8" fill="hsl(var(--foreground))" />
+        <circle cx="82" cy="48" r="8" fill="hsl(var(--foreground))" />
+        <motion.circle
+          cx="30"
+          cy="48"
+          r="3"
+          fill="hsl(var(--card))"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 0.65, repeat: Infinity, ease: 'linear' }}
+        />
+        <motion.circle
+          cx="82"
+          cy="48"
+          r="3"
+          fill="hsl(var(--card))"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 0.65, repeat: Infinity, ease: 'linear' }}
+        />
+        <path d="M99 36 H109" stroke="hsl(var(--primary-foreground) / 0.8)" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    </motion.div>
   );
 }
 
-function PickupStop({ x, y, label, delay }: { x: number; y: number; label: string; delay: number }) {
+function BenefitTicker() {
   return (
-    <motion.g
-      initial={{ scale: 0.92, opacity: 0.72 }}
-      animate={{ scale: [0.92, 1.05, 0.92], opacity: [0.72, 1, 0.72] }}
-      transition={{ duration: 2.6, delay, repeat: Infinity, ease: 'easeInOut' }}
-      transform={`translate(${x} ${y})`}
-    >
-      <rect x="-31" y="-33" width="62" height="40" rx="12" fill="hsl(var(--card) / 0.94)" stroke="hsl(var(--primary) / 0.22)" />
-      <path d="M-18 -12 H13 V2 H-18 Z" fill="hsl(var(--primary) / 0.18)" />
-      <path d="M-14 -24 H10 V-12 H-14 Z" fill="hsl(var(--primary))" />
-      <circle cx="18" cy="-17" r="5" fill="hsl(var(--primary))" />
-      <text x="0" y="-43" textAnchor="middle" className="fill-foreground text-[12px] font-bold">
-        {label}
-      </text>
-    </motion.g>
-  );
-}
-
-function PlanningCard() {
-  return (
-    <motion.g
-      initial={{ opacity: 0.78, y: 3 }}
-      animate={{ opacity: [0.78, 1, 0.78], y: [3, 0, 3] }}
-      transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
-    >
-      <rect
-        x="46"
-        y="28"
-        width="142"
-        height="58"
-        rx="16"
-        fill="hsl(var(--card) / 0.94)"
-        stroke="hsl(var(--primary) / 0.2)"
-      />
-      <text x="64" y="49" className="fill-foreground text-[13px] font-bold">
-        Plan your route
-      </text>
-      <circle cx="70" cy="66" r="4" fill="hsl(var(--primary))" />
-      <path d="M82 66 H144" stroke="hsl(var(--primary) / 0.22)" strokeWidth="5" strokeLinecap="round" />
-      <motion.path
-        d="M82 66 H144"
-        stroke="hsl(var(--primary))"
-        strokeWidth="5"
-        strokeLinecap="round"
-        initial={{ pathLength: 0.2 }}
-        animate={{ pathLength: [0.2, 1, 0.2] }}
-        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-      />
-    </motion.g>
+    <div className="relative h-6 overflow-hidden text-xs font-semibold text-primary">
+      {benefitLines.map((line, index) => (
+        <motion.span
+          key={line}
+          className="absolute left-0 top-0 rounded-full bg-primary/10 px-2.5 py-1"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: [0, 1, 1, 0], y: [12, 0, 0, -12] }}
+          transition={{
+            duration: 6,
+            delay: index * 2,
+            repeat: Infinity,
+            ease: 'easeInOut',
+            times: [0, 0.08, 0.32, 0.42],
+          }}
+        >
+          {line}
+        </motion.span>
+      ))}
+    </div>
   );
 }
 
@@ -108,95 +147,22 @@ export function CityDriveIllustration() {
         aria-hidden
       />
 
-      <div className="relative z-10 min-h-[14rem] px-5 py-4">
-        <div className="relative z-20 space-y-2">
-          <p className="text-sm font-bold leading-snug text-foreground">
+      <div className="relative z-10 min-h-[14rem] px-5 pb-4 pt-4">
+        <div className="relative z-30 max-w-[82%] space-y-2">
+          <p className="text-[15px] font-bold leading-snug text-foreground">
             Plan your route, Add Items, Pickup On the Go!
           </p>
-          <div className="relative h-5 overflow-hidden text-xs font-semibold text-primary">
-            {benefitLines.map((line, index) => (
-              <motion.span
-                key={line}
-                className="absolute left-0 top-0"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: [0, 1, 1, 0], y: [10, 0, 0, -10] }}
-                transition={{
-                  duration: 6,
-                  delay: index * 2,
-                  repeat: Infinity,
-                  ease: 'easeInOut',
-                  times: [0, 0.08, 0.28, 0.36],
-                }}
-              >
-                {line}
-              </motion.span>
-            ))}
-          </div>
+          <BenefitTicker />
         </div>
 
-        <div className="absolute inset-x-4 bottom-2 h-40" aria-hidden>
-          <svg viewBox="0 0 520 220" className="h-full w-full overflow-visible">
-            <defs>
-              <linearGradient id="route-gradient" x1="30" y1="154" x2="492" y2="96" gradientUnits="userSpaceOnUse">
-                <stop stopColor="hsl(var(--primary))" stopOpacity="0.25" />
-                <stop offset="0.45" stopColor="hsl(var(--primary))" />
-                <stop offset="1" stopColor="hsl(var(--accent))" />
-              </linearGradient>
-              <filter id="route-glow" x="-20%" y="-70%" width="140%" height="240%">
-                <feGaussianBlur stdDeviation="5" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            <Skyline />
-            <PlanningCard />
-            <PickupStop x={292} y={120} label="Add items" delay={0.4} />
-            <PickupStop x={405} y={135} label="Pickup" delay={1.1} />
-
-            <path
-              d={routePath}
-              fill="none"
-              stroke="hsl(var(--foreground) / 0.08)"
-              strokeWidth="14"
-              strokeLinecap="round"
-            />
-            <motion.path
-              d={routePath}
-              fill="none"
-              stroke="url(#route-gradient)"
-              strokeWidth="4"
-              strokeLinecap="round"
-              filter="url(#route-glow)"
-              initial={{ pathLength: 0.15, pathOffset: 0 }}
-              animate={{ pathOffset: [0, 1] }}
-              transition={{ duration: 3.8, repeat: Infinity, ease: 'linear' }}
-              style={{ pathLength: 0.34 }}
-            />
-
-            <motion.circle
-              cx="30"
-              cy="154"
-              r="8"
-              fill="hsl(var(--card))"
-              stroke="hsl(var(--primary))"
-              strokeWidth="4"
-              animate={{ r: [7, 9, 7] }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            />
-            <motion.circle
-              cx="492"
-              cy="96"
-              r="8"
-              fill="hsl(var(--primary))"
-              animate={{ opacity: [0.55, 1, 0.55], scale: [0.9, 1.08, 0.9] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            />
-
-            <RouteMarker />
-          </svg>
+        <div className="absolute inset-x-0 bottom-0 h-36 overflow-hidden" aria-hidden>
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-b from-muted/20 to-muted/70" />
+          <SkylineLayer duration={34} opacity={0.12} bottom="4.5rem" scale={0.9} />
+          <SkylineLayer duration={18} opacity={0.22} bottom="3.15rem" />
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-foreground/10" />
+          <div className="absolute inset-x-0 bottom-16 h-px bg-foreground/10" />
+          <LaneMarks />
+          <DrivingCar />
         </div>
       </div>
     </div>

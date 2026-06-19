@@ -73,24 +73,15 @@ export default function CancelOrderPage() {
     try {
       const finalReason = selectedReason === "Other" ? otherReason : selectedReason;
       
-      const cancellationDetails = {
-        reason: finalReason,
-        cancelledAt: new Date().toISOString()
-      };
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: finalReason }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
 
-      const { error } = await supabase
-        .from("placed_orders")
-        .update({
-          overall_status: "Cancelled",
-          customer_info: {
-            ...(order?.customerInfo || {}),
-            cancellation: cancellationDetails
-          }
-        })
-        .eq("order_id", orderId);
-
-      if (error) {
-        throw error;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Could not cancel order");
       }
 
       toast({

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { ChevronUp, Minus, Plus, ShoppingBag, Store, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -101,6 +102,7 @@ function SimpleCartRow({
 
 export function OrderCart() {
   const flow = useOrderFlow();
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
 
   const {
@@ -126,6 +128,11 @@ export function OrderCart() {
 
   const hasItems = summary.itemCount > 0;
   const showBar = categories.length > 0 || hasItems;
+
+  const handleCheckout = () => {
+    setOpen(false);
+    router.push('/order/review');
+  };
 
   if (!showBar) return null;
 
@@ -340,6 +347,13 @@ export function OrderCart() {
                   {formatCartInr(summary.total)}
                 </span>
               </div>
+              <Button
+                type="button"
+                className="h-12 w-full rounded-xl text-base font-semibold"
+                onClick={handleCheckout}
+              >
+                Checkout
+              </Button>
             </div>
           )}
         </SheetContent>

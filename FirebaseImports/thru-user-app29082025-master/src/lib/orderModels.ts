@@ -8,6 +8,16 @@ export interface PlacedOrder {
     id?: string;
     name?: string;
     phoneNumber?: string;
+    vehicle?: {
+      number: string;
+      make?: string;
+      model?: string;
+    };
+    cancellation?: {
+      reason?: string;
+      cancelledAt?: string;
+      cancelledBy?: string;
+    };
   };
   tripStartLocation?: string;
   tripDestination?: string;
