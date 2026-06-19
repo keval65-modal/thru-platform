@@ -39,7 +39,7 @@ function RouteMarker() {
 
 export function CityDriveIllustration() {
   return (
-    <div className="relative mt-2 overflow-hidden rounded-[1.35rem] border border-primary/10 bg-card/70 shadow-sm">
+    <div className="relative mt-2 overflow-hidden rounded-[1.35rem] border border-primary/10 bg-card/80 shadow-md">
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,hsl(var(--primary)/0.14),transparent_34%),linear-gradient(180deg,hsl(var(--primary)/0.05),hsl(var(--muted)/0.4))]"
         aria-hidden
@@ -47,7 +47,7 @@ export function CityDriveIllustration() {
 
       <div className="relative z-10 grid min-h-[10.5rem] grid-cols-[1fr_auto] gap-3 px-5 py-4">
         <div className="flex flex-col justify-end pb-1">
-          <p className="text-sm font-semibold leading-snug text-foreground">Just pickup and go.</p>
+          <p className="text-sm font-semibold leading-snug text-foreground">Just pickup and go!</p>
           <p className="text-xs font-medium text-primary">We&apos;ve got you.</p>
         </div>
 
