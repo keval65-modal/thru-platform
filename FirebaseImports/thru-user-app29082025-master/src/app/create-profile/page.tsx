@@ -30,10 +30,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ChevronLeft, UserCircle, Camera, PlusCircle, XCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { saveUserProfileAction } from "@/app/actions/user";
-import { db } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
-import bcrypt from "bcryptjs";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -46,8 +43,16 @@ const profileFormSchema = z.object({
   city: z.string().optional(),
   vehicleNumbers: z.array(
     z.object({
-      value: z.string().min(4, { message: "Vehicle number must be at least 4 characters." })
-                       .regex(/^[A-Z0-9-]+$/, { message: "Invalid vehicle number format."}),
+      value: z.string()
+        .optional()
+        .refine((value) => !value || value.length >= 4, {
+          message: "Vehicle number must be at least 4 characters.",
+        })
+        .refine((value) => !value || /^[A-Z0-9-]+$/.test(value), {
+          message: "Invalid vehicle number format.",
+        }),
+      make: z.string().optional(),
+      model: z.string().optional(),
     })
   ).min(0),
 }).refine(data => data.password === data.confirmPassword, {
@@ -104,7 +109,7 @@ function CreateProfilePageContent() {
       address: "",
       gender: "",
       city: "",
-      vehicleNumbers: [{ value: "" }],
+      vehicleNumbers: [{ value: "", make: "", model: "" }],
     },
     mode: "onChange",
   });
@@ -118,35 +123,32 @@ function CreateProfilePageContent() {
     setIsLoading(true);
     console.log("Profile data submitted:", data);
 
-    try {
-      if (!db) {
-        throw new Error("Firestore is not available on client");
-      }
+    const { auth } = await import('@/lib/firebase');
+    const vehicles = data.vehicleNumbers
+      .map((vehicle) => ({
+        number: vehicle.value?.trim().toUpperCase() ?? "",
+        make: vehicle.make?.trim() || undefined,
+        model: vehicle.model?.trim() || undefined,
+      }))
+      .filter((vehicle) => Boolean(vehicle.number));
 
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(data.password, saltRounds);
+    const result = await saveUserProfileAction({
+      firebaseUid: auth?.currentUser?.uid,
+      name: data.name,
+      phoneNumber: data.phoneNumber,
+      email: data.email || "",
+      password: data.password,
+      address: data.address || "",
+      gender: data.gender || "",
+      city: data.city || "",
+      vehicles,
+      vehicleNumbers: vehicles.map((vehicle) => vehicle.number),
+    });
 
-      const userDoc = {
-        hashedPassword,
-        displayName: `${data.name},${data.phoneNumber}`, // Format: "UserName,Number"
-        profileData: {
-          name: data.name,
-          phoneNumber: data.phoneNumber,
-          email: data.email || undefined,
-          address: data.address || undefined,
-          gender: data.gender || undefined,
-          city: data.city || undefined,
-          vehicleNumbers: data.vehicleNumbers
-            .map((v) => v.value)
-            .filter((v) => v.trim() !== ""),
-        },
-      };
+    setIsLoading(false);
 
-      await setDoc(doc(db, "users", data.phoneNumber), userDoc);
-
-      // Update Firebase Auth user's displayName as well
+    if (result.success) {
       try {
-        const { auth } = await import('@/lib/firebase');
         if (auth && auth.currentUser) {
           await updateProfile(auth.currentUser, {
             displayName: `${data.name},${data.phoneNumber}`
@@ -155,31 +157,8 @@ function CreateProfilePageContent() {
         }
       } catch (authError) {
         console.warn("[Create Profile] Could not update Firebase Auth displayName:", authError);
-        // Don't fail the entire process if this fails
       }
 
-      toast({ title: "Profile Created!", description: "Saved to Firestore.", variant: "default" });
-      router.push("/home");
-      setIsLoading(false);
-      return;
-    } catch (clientErr) {
-      console.warn("Client Firestore save failed, falling back to server action.", clientErr);
-    }
-
-    const result = await saveUserProfileAction({
-      name: data.name,
-      phoneNumber: data.phoneNumber,
-      email: data.email || "",
-      password: data.password,
-      address: data.address || "",
-      gender: data.gender || "",
-      city: data.city || "",
-      vehicleNumbers: data.vehicleNumbers.map((v) => v.value).filter((v) => Boolean(v) && v.trim() !== ""),
-    });
-
-    setIsLoading(false);
-
-    if (result.success) {
       toast({ title: "Profile Created!", description: result.message, variant: "default" });
       router.push("/home");
     } else {
@@ -369,23 +348,57 @@ function CreateProfilePageContent() {
             </div>
 
             <div>
-              <FormLabel>Vehicle number(s)</FormLabel>
+              <FormLabel>Vehicle(s)</FormLabel>
               {fields.map((field, index) => (
-                <FormField
-                  control={form.control}
-                  key={field.id}
-                  name={`vehicleNumbers.${index}.value`}
-                  render={({ field: itemField }) => (
-                    <FormItem className="mt-2">
-                      <div className="flex items-center space-x-2">
+                <div key={field.id} className="mt-2 rounded-xl border border-border/60 p-3">
+                  <FormField
+                    control={form.control}
+                    name={`vehicleNumbers.${index}.value`}
+                    render={({ field: itemField }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs text-muted-foreground">Vehicle number</FormLabel>
                         <FormControl>
                           <Input 
                             placeholder="eg. MH-01-AE-0000" 
                             {...itemField} 
+                            value={itemField.value ?? ""}
                             onChange={(e) => itemField.onChange(e.target.value.toUpperCase())}
                           />
                         </FormControl>
-                        {fields.length > 0 && ( 
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name={`vehicleNumbers.${index}.make`}
+                      render={({ field: itemField }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs text-muted-foreground">Make</FormLabel>
+                          <FormControl>
+                            <Input placeholder="eg. Honda" {...itemField} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`vehicleNumbers.${index}.model`}
+                      render={({ field: itemField }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs text-muted-foreground">Model</FormLabel>
+                          <FormControl>
+                            <Input placeholder="eg. City" {...itemField} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  {fields.length > 0 && (
+                    <div className="mt-2 flex justify-end">
                           <Button
                             type="button"
                             variant="ghost"
@@ -396,25 +409,22 @@ function CreateProfilePageContent() {
                           >
                             <XCircle className="h-5 w-5" />
                           </Button>
-                        )}
-                      </div>
-                      <FormMessage />
-                    </FormItem>
+                    </div>
                   )}
-                />
+                </div>
               ))}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="mt-3"
-                onClick={() => append({ value: "" })}
+                onClick={() => append({ value: "", make: "", model: "" })}
               >
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Add Vehicle
               </Button>
               <FormDescription className="mt-1">
-                Vehicle number helps vendors find your vehicle and deliver the order. You can update it later.
+                Vehicle details help vendors identify you at pickup. Make/model lookup from RTO data requires an authorized provider, so enter it manually for now.
               </FormDescription>
             </div>
             

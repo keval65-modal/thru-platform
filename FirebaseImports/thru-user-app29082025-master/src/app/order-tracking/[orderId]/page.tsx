@@ -622,7 +622,7 @@ export default function OrderTrackingPage() {
                             <span className="text-xs font-bold">Picked up : 27 Jan 2025</span>
                         </div>
                     ) : (
-                        <Card className="bg-gradient-to-br from-blue-50 to-white border-2 border-blue-200">
+                        <Card id="pickup-qr" className="bg-gradient-to-br from-blue-50 to-white border-2 border-blue-200 scroll-mt-24">
                             <CardContent className="p-6 flex flex-col items-center gap-4">
                                 <div className="flex items-center gap-2 text-blue-600">
                                     <QrCode className="h-5 w-5" />

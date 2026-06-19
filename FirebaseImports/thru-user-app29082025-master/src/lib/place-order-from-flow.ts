@@ -11,6 +11,12 @@ import {
 import type { PlacedOrder, VendorOrderPortion } from '@/lib/orderModels';
 import type { OrderFlowState } from '@/types/order-flow';
 
+export type CheckoutVehicle = {
+  number: string;
+  make?: string;
+  model?: string;
+};
+
 function formatGroceryOrderDetails(item: OrderFlowState['groceryItems'][number]): string {
   return [
     item.brand ? `Brand: ${item.brand}` : null,
@@ -139,7 +145,8 @@ function buildVendorPortions(
 }
 
 export async function placeOrderFromFlow(
-  flow: OrderFlowState
+  flow: OrderFlowState,
+  arrivalVehicle?: CheckoutVehicle | null
 ): Promise<{ success: boolean; orderId?: string; error?: string }> {
   const summary = computeCartSummary(flow);
   const pickupStores = getPickupStores(flow);
@@ -168,6 +175,13 @@ export async function placeOrderFromFlow(
     customerInfo: {
       name: 'Guest User',
       phoneNumber: '+919876543210',
+      vehicle: arrivalVehicle?.number
+        ? {
+            number: arrivalVehicle.number,
+            make: arrivalVehicle.make,
+            model: arrivalVehicle.model,
+          }
+        : undefined,
     },
   };
 

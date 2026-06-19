@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebaseAdmin';
 import bcrypt from 'bcryptjs';
+import { getUserProfile } from '@/lib/supabase/user-profile-service';
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
@@ -18,27 +19,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Phone number must be in E.164 format (e.g., +91XXXXXXXXXX).' }, { status: 400 });
     }
 
-    // Fetch user doc by phone number (E.164 id)
-    const db = adminDb();
-    if (!db) {
-      return NextResponse.json({ success: false, message: 'Database not available' }, { status: 500 });
-    }
     const userDocId = phoneNumber;
-    console.log('[LoginAPI] Fetching user doc', { userDocId });
-    const userSnap = await db.collection('users').doc(userDocId).get();
-    if (!userSnap.exists) {
-      console.warn('[LoginAPI] User doc not found', { userDocId });
-      return NextResponse.json({ success: false, message: 'Invalid phone number or password.' }, { status: 401 });
+    let hashedPassword: string | undefined;
+
+    try {
+      const db = adminDb();
+      if (db) {
+        console.log('[LoginAPI] Fetching Firestore user doc', { userDocId });
+        const userSnap = await db.collection('users').doc(userDocId).get();
+        const data = userSnap.exists ? userSnap.data() as any : null;
+        hashedPassword = data?.hashedPassword as string | undefined;
+      }
+    } catch (firestoreError) {
+      console.warn('[LoginAPI] Firestore lookup failed, trying Supabase profile', firestoreError);
     }
 
-    const data = userSnap.data() as any;
-    const hashedPassword = data?.hashedPassword as string | undefined;
+    if (!hashedPassword) {
+      const profile = await getUserProfile({ phone: phoneNumber });
+      hashedPassword = profile?.hashedPassword;
+    }
+
     console.log('[LoginAPI] Loaded user doc', {
       hasHash: !!hashedPassword,
       hashPrefix: typeof hashedPassword === 'string' ? hashedPassword.substring(0, 7) : undefined,
     });
     if (!hashedPassword) {
-      return NextResponse.json({ success: false, message: 'Password not set for this account. Try OTP login or reset password.' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'Invalid phone number or password.' }, { status: 401 });
     }
 
     const candidate = typeof password === 'string' ? password.trim() : password;

@@ -11,6 +11,7 @@ import {
   Loader2,
   MapPin,
   Package,
+  QrCode,
   ShoppingBag,
   Store,
   XCircle,
@@ -249,20 +250,26 @@ function OrderCard({
 
         <Separator />
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className={tab === "active" ? "grid grid-cols-1 gap-2 sm:grid-cols-3" : "grid grid-cols-1 gap-2 sm:grid-cols-2"}>
           <Button variant="outline" onClick={() => router.push(`/order-tracking/${order.orderId}`)}>
             Track Order
           </Button>
           {tab === "active" ? (
-            <Button
-              variant="outline"
-              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              disabled={cancelling}
-              onClick={() => onCancel(order)}
-            >
-              {cancelling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
-              Cancel order
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => router.push(`/order-tracking/${order.orderId}#pickup-qr`)}>
+                <QrCode className="mr-2 h-4 w-4" />
+                Show Pickup QR
+              </Button>
+              <Button
+                variant="outline"
+                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={cancelling}
+                onClick={() => onCancel(order)}
+              >
+                {cancelling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                Cancel order
+              </Button>
+            </>
           ) : null}
         </div>
       </CardContent>

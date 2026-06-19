@@ -3,8 +3,7 @@
 
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { db } from '@/lib/firebase'; // Import Firestore instance
-import { doc, setDoc, getDoc } from 'firebase/firestore'; // Import Firestore functions
+import { getUserProfile, upsertUserProfile } from '@/lib/supabase/user-profile-service';
 
 // This type needs to be defined or imported if it's used elsewhere,
 // for now, defining it based on usage.
@@ -18,12 +17,18 @@ export interface StoredUser {
     address?: string;
     gender?: string;
     city?: string;
+    vehicles?: {
+      number: string;
+      make?: string;
+      model?: string;
+    }[];
     vehicleNumbers?: string[];
   };
 }
 
 // This schema defines the data expected when creating/updating a user profile.
 const UserProfileSchema = z.object({
+  firebaseUid: z.string().optional(),
   name: z.string().min(2, "Name must be at least 2 characters."),
   phoneNumber: z.string(), // Already validated upstream via OTP
   email: z.string().email("Invalid email format.").optional().or(z.literal('')),
@@ -31,6 +36,11 @@ const UserProfileSchema = z.object({
   address: z.string().optional(),
   gender: z.string().optional(),
   city: z.string().optional(),
+  vehicles: z.array(z.object({
+    number: z.string(),
+    make: z.string().optional(),
+    model: z.string().optional(),
+  })).optional(),
   vehicleNumbers: z.array(z.string()).optional(),
 });
 
@@ -47,13 +57,8 @@ export async function checkUserExistsAction(phoneNumber: string): Promise<Action
   console.log('Checking if user exists for phone:', phoneNumber);
 
   try {
-    if (!db) {
-      console.error("[Server Action] checkUserExistsAction: Firestore not initialized");
-      return { success: false, message: 'Database not available. Please try again later.' };
-    }
-    
-    const userDoc = await getDoc(doc(db, "users", phoneNumber));
-    const userExists = userDoc.exists();
+    const userProfile = await getUserProfile({ phone: phoneNumber });
+    const userExists = Boolean(userProfile);
     
     console.log(`User exists check for ${phoneNumber}:`, userExists);
     
@@ -69,7 +74,7 @@ export async function checkUserExistsAction(phoneNumber: string): Promise<Action
 }
 
 export async function saveUserProfileAction(profileData: UserProfileInput): Promise<ActionResponse> {
-  console.log('Attempting to save user profile to Firestore...');
+  console.log('Attempting to save user profile to Supabase...');
 
   const validation = UserProfileSchema.safeParse(profileData);
   if (!validation.success) {
@@ -81,44 +86,36 @@ export async function saveUserProfileAction(profileData: UserProfileInput): Prom
     };
   }
 
-  const { password, ...userDataToSave } = validation.data;
+  const { password, firebaseUid, ...userDataToSave } = validation.data;
 
   try {
-    if (!db) {
-      console.error("[Server Action] saveUserProfileAction: Firestore not initialized");
-      return { success: false, message: 'Database not available. Please try again later.' };
-    }
-    
     const saltRounds = 10; 
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     console.log(`Password hashed for user: ${userDataToSave.phoneNumber}`);
 
-    const userToStore: StoredUser = {
+    await upsertUserProfile({
+      firebaseUid: firebaseUid || userDataToSave.phoneNumber,
       hashedPassword,
-      displayName: `${userDataToSave.name},${userDataToSave.phoneNumber}`, // Format: "UserName,Number"
-      profileData: {
+      profile: {
         name: userDataToSave.name,
         phoneNumber: userDataToSave.phoneNumber,
         email: userDataToSave.email || undefined,
         address: userDataToSave.address || undefined,
         gender: userDataToSave.gender || undefined,
         city: userDataToSave.city || undefined,
+        vehicles: userDataToSave.vehicles || undefined,
         vehicleNumbers: userDataToSave.vehicleNumbers || undefined,
-      }
-    };
-
-    // Save to Firestore
-    // Using phoneNumber as the document ID in a 'users' collection
-    await setDoc(doc(db, "users", userDataToSave.phoneNumber), userToStore);
+      },
+    });
     
-    console.log('User profile saved successfully to Firestore. User Phone (Document ID):', userDataToSave.phoneNumber);
+    console.log('User profile saved successfully to Supabase. User Phone:', userDataToSave.phoneNumber);
 
     // Note: Firebase Auth displayName update should be handled on the client side
     // since server actions don't have access to the current user's auth state
 
-    return { success: true, message: 'Profile created and password set successfully! (Stored in Firestore)', userId: userDataToSave.phoneNumber };
+    return { success: true, message: 'Profile created and password set successfully!', userId: userDataToSave.phoneNumber };
   } catch (error) {
-    console.error('Error during profile save (hashing or Firestore write):', error);
+    console.error('Error during profile save:', error);
     return { success: false, message: 'Failed to save profile due to an internal error.', error: (error as Error).message };
   }
 }
