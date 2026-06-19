@@ -21,7 +21,7 @@ function RouteMarker() {
     <motion.g
       initial={{ offsetDistance: '0%' }}
       animate={{ offsetDistance: ['0%', '100%'] }}
-      transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', repeatDelay: 0.4 }}
+      transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
       style={{
         offsetPath: `path("${routePath}")`,
         offsetRotate: 'auto',
@@ -86,7 +86,7 @@ export function CityDriveIllustration() {
               filter="url(#route-glow)"
               initial={{ pathLength: 0.15, pathOffset: 0 }}
               animate={{ pathOffset: [0, 1] }}
-              transition={{ duration: 2.8, repeat: Infinity, ease: 'linear' }}
+              transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
               style={{ pathLength: 0.28 }}
             />
 
