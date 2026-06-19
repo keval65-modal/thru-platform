@@ -17,6 +17,7 @@ import {
 } from '@/lib/food-cart-storage';
 import {
   defaultOrderFlowState,
+  hasSavedOrderFlowState,
   loadOrderFlowState,
   saveOrderFlowState,
 } from '@/lib/order-flow-storage';
@@ -70,8 +71,9 @@ export function OrderFlowProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = React.useState(false);
 
   React.useEffect(() => {
+    const hasSavedFlow = hasSavedOrderFlowState();
     const loaded = loadOrderFlowState();
-    if (loaded.foodItems.length === 0) {
+    if (!hasSavedFlow && loaded.foodItems.length === 0) {
       const imported = importFoodCartFromStorage();
       if (imported) {
         setState({

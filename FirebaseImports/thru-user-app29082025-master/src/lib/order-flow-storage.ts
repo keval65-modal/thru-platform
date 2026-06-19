@@ -3,6 +3,11 @@ import { clampScheduledDepartureIso, isDepartureIsoInPast } from '@/lib/departur
 
 const STORAGE_KEY = 'thru-order-flow-v2';
 
+export function hasSavedOrderFlowState(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem(STORAGE_KEY) !== null;
+}
+
 function sanitizeRouteOptions(state: OrderFlowState): OrderFlowState {
   const stale =
     state.routeOptions.length > 0 &&
