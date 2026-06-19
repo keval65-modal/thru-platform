@@ -10,7 +10,7 @@ Configured via CLI (root directory, Git connect, ignored build steps).
 | Vercel project | Root directory | Production domain |
 |----------------|----------------|-------------------|
 | `thru-vendor-dashboard` | `FirebaseImports/thru-vendor-firebase-main/thru-vendor-firebase-main` | https://merchant.kiptech.in |
-| `thru-user-app29082025-master` | `FirebaseImports/thru-user-app29082025-master/thru-user-app29082025-master` | https://app.kiptech.in |
+| `thru-user-app29082025-master` | `FirebaseImports/thru-user-app29082025-master` | https://app.kiptech.in |
 | `thru-landing` | `FirebaseImports/thru-landing` | https://thru.kiptech.in |
 
 All three are connected to the same GitHub repo (`keval65-modal/thru-platform`, branch `main`).
@@ -22,7 +22,7 @@ Vercel **skips** the build when the command exits `0`, and **runs** it when the 
 `git diff --quiet` exits `1` when files changed, `0` when unchanged — so only the app whose path changed should build:
 
 - **Vendor:** `git diff HEAD^ HEAD --quiet -- FirebaseImports/thru-vendor-firebase-main/thru-vendor-firebase-main/`
-- **User:** `git diff HEAD^ HEAD --quiet -- FirebaseImports/thru-user-app29082025-master/thru-user-app29082025-master/`
+- **User:** `git diff HEAD^ HEAD --quiet -- FirebaseImports/thru-user-app29082025-master/`
 - **Landing:** `git diff HEAD^ HEAD --quiet -- FirebaseImports/thru-landing/`
 
 If Git deploys stay **Canceled** (1s, no build), use Vercel env SHAs instead (per project, same path):

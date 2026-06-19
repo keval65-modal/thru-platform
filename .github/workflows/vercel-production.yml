@@ -27,7 +27,6 @@ jobs:
               - 'FirebaseImports/thru-landing/**'
             user:
               - 'FirebaseImports/thru-user-app29082025-master/**'
-              - 'FirebaseImports/thru-user-app29082025-master/thru-user-app29082025-master/**'
             vendor:
               - 'FirebaseImports/thru-vendor-firebase-main/thru-vendor-firebase-main/**'
 
