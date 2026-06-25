@@ -7,6 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { useToast } from '@/hooks/use-toast';
 import {
   buildOrderId,
@@ -16,7 +22,7 @@ import {
   type PrescriptionMetadata,
 } from '@/lib/prescription-types';
 import { prescriptionValidationMessage, prescriptionManualReviewMessage } from '@/lib/prescription-validation';
-import { Camera, Loader2, Plus, Trash2, Pill, Upload, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Camera, Loader2, Plus, Trash2, Pill, Upload, AlertCircle, CheckCircle2, Search, Minus } from 'lucide-react';
 import { MedicineQuantitySuggestions } from '@/components/medicine/MedicineQuantitySuggestions';
 import type {
   MedicineDosageSuggestion,
@@ -24,6 +30,11 @@ import type {
 } from '@/lib/medicine-quantity-search';
 import { CategoryRouteShops } from '@/components/order/CategoryRouteShops';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
+import type {
+  MedicineDiscoveryResult,
+  MedicineDiscoveryVariant,
+  ProductSearchResponse,
+} from '@/types/product-discovery';
 
 type Props = {
   startCoords?: { lat: number; lng: number } | null;
@@ -55,6 +66,46 @@ export function MedicineOrderPanel({
   const [manualQty, setManualQty] = React.useState(1);
   const [manualStrength, setManualStrength] = React.useState<string | undefined>();
   const [manualPackLabel, setManualPackLabel] = React.useState<string | undefined>();
+  const [medicineMode, setMedicineMode] = React.useState<'human' | 'pet'>('human');
+  const [medicineQuery, setMedicineQuery] = React.useState('');
+  const [medicineResults, setMedicineResults] = React.useState<MedicineDiscoveryResult[]>([]);
+  const [searchingMedicines, setSearchingMedicines] = React.useState(false);
+  const [selectedMedicine, setSelectedMedicine] = React.useState<MedicineDiscoveryResult | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = React.useState('');
+  const [selectedQuantity, setSelectedQuantity] = React.useState(1);
+
+  React.useEffect(() => {
+    const query = medicineQuery.trim();
+    if (query.length < 2) {
+      setMedicineResults([]);
+      setSearchingMedicines(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSearchingMedicines(true);
+      try {
+        const params = new URLSearchParams({
+          q: query,
+          type: 'medicine',
+          pet: medicineMode === 'pet' ? 'true' : 'false',
+        });
+        const response = await fetch(`/api/search?${params.toString()}`, { signal: controller.signal });
+        const data = (await response.json()) as ProductSearchResponse;
+        setMedicineResults(data.medicines ?? []);
+      } catch (error) {
+        if (!controller.signal.aborted) setMedicineResults([]);
+      } finally {
+        if (!controller.signal.aborted) setSearchingMedicines(false);
+      }
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [medicineQuery, medicineMode]);
 
   React.useEffect(() => {
     setMedicineItems(
@@ -196,6 +247,31 @@ export function MedicineOrderPanel({
     setManualPackLabel(undefined);
   };
 
+  const openMedicineSelection = (medicine: MedicineDiscoveryResult) => {
+    setSelectedMedicine(medicine);
+    setSelectedVariantId(medicine.variants[0]?.id ?? '');
+    setSelectedQuantity(1);
+  };
+
+  const addSelectedMedicine = () => {
+    if (!selectedMedicine) return;
+    const variant = selectedMedicine.variants.find((item) => item.id === selectedVariantId) ?? selectedMedicine.variants[0];
+    setMedicines((prev) => [
+      ...prev,
+      {
+        id: generateMedicineLineId(),
+        name: selectedMedicine.name,
+        quantity: selectedQuantity,
+        strength: variant?.strength ?? undefined,
+        packSize: variant?.label,
+        dosage: [variant?.strength, variant?.label, variant?.animalWeightRange].filter(Boolean).join(' · ') || undefined,
+      },
+    ]);
+    setSelectedMedicine(null);
+    setMedicineQuery('');
+    setMedicineResults([]);
+  };
+
   const updateMedicine = (id: string, patch: Partial<ParsedMedicineLine>) => {
     setMedicines((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
   };
@@ -327,11 +403,34 @@ export function MedicineOrderPanel({
           Medicine order
         </h3>
         <p className="text-sm text-muted-foreground mt-1">
-          Upload a prescription (within 3 months). AI reads medicines — edit before ordering.
+          Upload a prescription or search medicines. Edit everything before ordering.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 rounded-xl bg-muted p-1">
+        {(['human', 'pet'] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+              medicineMode === mode ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground'
+            }`}
+            onClick={() => {
+              setMedicineMode(mode);
+              setMedicineQuery('');
+              setMedicineResults([]);
+            }}
+          >
+            {mode === 'human' ? 'Human' : 'Pet'}
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-border/60 p-3">
+        <p className="mb-2 text-sm font-semibold">
+          {medicineMode === 'pet' ? 'Upload Vet Prescription' : 'Upload Prescription'}
+        </p>
+        <div className="flex flex-wrap gap-2">
         <input
           ref={fileRef}
           type="file"
@@ -363,6 +462,54 @@ export function MedicineOrderPanel({
             <Loader2 className="h-3 w-3 animate-spin" /> Analyzing…
           </Badge>
         )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>{medicineMode === 'pet' ? 'Search Pet Medicine' : 'Search Medicines'}</Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={medicineQuery}
+            onChange={(event) => setMedicineQuery(event.target.value)}
+            placeholder={medicineMode === 'pet' ? 'Search Nexgard, dewormer…' : 'Search Dolo, Pantocid…'}
+            className="h-12 rounded-xl border-0 bg-muted/50 pl-9 text-base"
+          />
+        </div>
+        {searchingMedicines ? (
+          <div className="flex items-center gap-2 rounded-xl bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Searching medicines…
+          </div>
+        ) : null}
+        {medicineResults.length > 0 ? (
+          <div className="space-y-2">
+            {medicineResults.map((medicine) => (
+              <button
+                key={medicine.id}
+                type="button"
+                className="w-full rounded-xl border border-border/60 bg-background p-3 text-left shadow-sm"
+                onClick={() => openMedicineSelection(medicine)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{medicine.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[medicine.manufacturer, medicine.variants[0]?.label, medicine.isOtc ? 'OTC' : medicine.requiresPrescription ? 'Prescription' : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                    {medicine.medicineType === 'pet' ? (
+                      <p className="mt-1 text-xs font-medium text-primary">{medicine.species || 'Pet medicine'}</p>
+                    ) : null}
+                  </div>
+                  <Badge variant={medicine.requiresPrescription ? 'secondary' : 'outline'}>
+                    {medicine.requiresPrescription ? 'Rx' : 'OTC'}
+                  </Badge>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {imagePreview && (
@@ -376,7 +523,10 @@ export function MedicineOrderPanel({
       {requiresManualReview && (
         <div className="flex items-start gap-2 text-sm rounded-md p-3 border bg-amber-50 border-amber-200 text-amber-950">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          <p className="font-medium">{prescriptionManualReviewMessage()}</p>
+          <div>
+            <p className="font-medium">Couldn&apos;t verify.</p>
+            <p>{prescriptionManualReviewMessage()} Tap to choose medicines manually.</p>
+          </div>
         </div>
       )}
 
@@ -403,7 +553,7 @@ export function MedicineOrderPanel({
 
       {medicines.length > 0 && (
         <div className="space-y-3">
-          <Label>Medicines</Label>
+          <Label>{imagePreview ? 'Detected Medicines' : 'Added Medicines'}</Label>
           {medicines.map((m) => (
             <div key={m.id} className="space-y-2 border rounded-md p-2">
               <div className="flex flex-wrap gap-2 items-center">
@@ -452,7 +602,7 @@ export function MedicineOrderPanel({
       <div className="space-y-2 border-t pt-3">
         <div className="flex flex-wrap gap-2 items-end">
           <div className="flex-1 min-w-[160px]">
-            <Label className="text-xs">Add medicine manually</Label>
+            <Label className="text-xs">Couldn&apos;t find it? Add manually</Label>
             <Input
               placeholder="Medicine name"
               value={manualName}
@@ -508,6 +658,64 @@ export function MedicineOrderPanel({
           ? 'Request medicines (pharmacy will review prescription)'
           : 'Request medicines (await pharmacy quote)'}
       </Button>
+
+      <Sheet open={Boolean(selectedMedicine)} onOpenChange={(open) => !open && setSelectedMedicine(null)}>
+        <SheetContent side="bottom" className="rounded-t-2xl">
+          {selectedMedicine ? (
+            <div className="space-y-5">
+              <SheetHeader>
+                <SheetTitle className="text-left">{selectedMedicine.name}</SheetTitle>
+              </SheetHeader>
+
+              <div>
+                <p className="mb-2 text-sm font-semibold">Pack Size</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {(selectedMedicine.variants.length > 0 ? selectedMedicine.variants : [{ id: `${selectedMedicine.id}-default`, label: 'Pack' } as MedicineDiscoveryVariant]).map((variant) => (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      className={`rounded-xl border p-3 text-left text-sm font-medium ${
+                        selectedVariantId === variant.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background'
+                      }`}
+                      onClick={() => setSelectedVariantId(variant.id)}
+                    >
+                      <span>{variant.label}</span>
+                      {[variant.strength, variant.form, variant.animalWeightRange].filter(Boolean).length > 0 ? (
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {[variant.strength, variant.form, variant.animalWeightRange].filter(Boolean).join(' · ')}
+                        </span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-semibold">Quantity</p>
+                <div className="flex w-fit items-center rounded-full border border-border bg-muted/30 p-1">
+                  <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setSelectedQuantity((value) => Math.max(1, value - 1))}>
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-10 text-center font-bold">{selectedQuantity}</span>
+                  <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setSelectedQuantity((value) => value + 1)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {selectedMedicine.requiresPrescription || selectedMedicine.medicineType === 'pet' ? (
+                <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                  {selectedMedicine.medicineType === 'pet' ? 'Upload Vet Prescription if required by the pharmacy.' : 'Prescription may be required for this medicine.'}
+                </p>
+              ) : null}
+
+              <Button type="button" className="h-12 w-full rounded-xl text-base font-semibold" onClick={addSelectedMedicine}>
+                Add
+              </Button>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </Card>
   );
 }

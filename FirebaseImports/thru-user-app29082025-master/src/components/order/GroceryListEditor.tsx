@@ -1,36 +1,39 @@
 'use client';
 
 import * as React from 'react';
-import { Loader2, Mic, MicOff, Search } from 'lucide-react';
+import { Loader2, Minus, Plus, Search, ShoppingBag, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { useOrderFlow } from '@/contexts/OrderFlowContext';
-import { GroceryItemRow } from '@/components/order/GroceryItemRow';
 import { CategoryRouteShops } from '@/components/order/CategoryRouteShops';
-import { getUnitDefaults } from '@/lib/grocery-unit-defaults';
-import { parseGroceryVoiceInput } from '@/lib/grocery-voice-parser';
-import { DynamicProduct, scalableGroceryAIService } from '@/lib/scalable-grocery-ai-service';
-import { useToast } from '@/hooks/use-toast';
 import type { GroceryListItem, GroceryUnit } from '@/types/order-flow';
+import type {
+  GenericDiscoveryResult,
+  ProductDiscoveryResult,
+  ProductDiscoveryVariant,
+  ProductSearchResponse,
+  ShoppingIntentResult,
+} from '@/types/product-discovery';
 
-type QuantityOption = {
-  quantity: number;
-  unit: string;
-  packSize?: string;
-  reason?: string;
-  source?: string;
-};
+type PendingSelection =
+  | { type: 'product'; product: ProductDiscoveryResult }
+  | { type: 'generic'; product: GenericDiscoveryResult };
 
-type GrocerySuggestion = {
-  product: DynamicProduct;
-  packOptions: QuantityOption[];
-};
+const PRODUCE_OPTIONS: ProductDiscoveryVariant[] = [
+  { id: 'fresh-250g', label: '250g', quantityValue: 250, unitCode: 'g' },
+  { id: 'fresh-500g', label: '500g', quantityValue: 500, unitCode: 'g' },
+  { id: 'fresh-1kg', label: '1kg', quantityValue: 1, unitCode: 'kg' },
+  { id: 'fresh-2kg', label: '2kg', quantityValue: 2, unitCode: 'kg' },
+  { id: 'fresh-custom', label: 'Custom Weight', quantityValue: 500, unitCode: 'g' },
+];
 
-function titleCase(value: string): string {
-  return value.trim().replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function normalizeUnit(unit?: string): GroceryUnit {
+function normalizeUnit(unit?: string | null): GroceryUnit {
   const normalized = unit?.toLowerCase().trim();
   if (normalized === 'g' || normalized === 'gram' || normalized === 'grams') return 'gram';
   if (normalized === 'l' || normalized === 'liter' || normalized === 'litre' || normalized === 'liters' || normalized === 'litres') return 'litre';
@@ -42,258 +45,372 @@ function normalizeUnit(unit?: string): GroceryUnit {
   return 'piece';
 }
 
-function dedupePackOptions(options: QuantityOption[]): QuantityOption[] {
-  const seen = new Set<string>();
-  return options.filter((option) => {
-    const key = `${option.quantity}-${normalizeUnit(option.unit)}-${option.packSize ?? ''}`.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+function titleCase(value: string): string {
+  return value.trim().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function getSourceLabel(source?: string): string {
-  if (!source) return 'Google search';
-  if (source === 'google_shopping') return 'Google Shopping';
-  if (source === 'bigbasket') return 'BigBasket';
-  if (source === 'grofers') return 'Blinkit';
-  if (source === 'amazon') return 'Amazon';
-  if (source === 'database') return 'Saved result';
-  return source;
+function formatPrice(value?: number | null): string | null {
+  if (value == null) return null;
+  return `₹${Math.round(value).toLocaleString('en-IN')}`;
+}
+
+function productImageLabel(product: ProductDiscoveryResult | GenericDiscoveryResult): string {
+  if ('emoji' in product && product.emoji) return product.emoji;
+  const name = product.name.toLowerCase();
+  if (name.includes('cheese')) return '🧀';
+  if (name.includes('tomato')) return '🍅';
+  if (name.includes('bread')) return '🍞';
+  if (name.includes('drink') || name.includes('coke')) return '🥤';
+  return '🛒';
+}
+
+function variantsFor(selection: PendingSelection): ProductDiscoveryVariant[] {
+  if (selection.type === 'generic') {
+    if (selection.product.productKind === 'fresh') return PRODUCE_OPTIONS;
+    return [{ id: 'generic-vendor-choice', label: 'Vendor will choose closest option', quantityValue: 1, unitCode: 'piece' }];
+  }
+  if (selection.product.productKind === 'fresh') return PRODUCE_OPTIONS;
+  return selection.product.variants.length > 0
+    ? selection.product.variants
+    : [{ id: `${selection.product.id}-default`, label: 'Pack', quantityValue: 1, unitCode: 'packet' }];
+}
+
+function ProductCard({
+  product,
+  onSelect,
+}: {
+  product: ProductDiscoveryResult;
+  onSelect: () => void;
+}) {
+  const variant = product.variants[0];
+  return (
+    <div className="rounded-xl border border-border/60 bg-background p-3 shadow-sm">
+      <div className="flex gap-3">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-2xl">
+          {product.imageUrl ? (
+            <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            productImageLabel(product)
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-muted-foreground">{product.brand || product.genericName || 'Product'}</p>
+          <p className="truncate text-sm font-semibold">{product.name}</p>
+          <p className="text-xs text-muted-foreground">{variant?.label || 'Pack size varies'}</p>
+          {formatPrice(variant?.mrp ?? product.mrp) ? (
+            <p className="mt-1 text-sm font-bold text-primary">{formatPrice(variant?.mrp ?? product.mrp)}</p>
+          ) : null}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onSelect}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function GenericCard({
+  product,
+  onSelect,
+}: {
+  product: GenericDiscoveryResult;
+  onSelect: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-primary/35 bg-primary/5 p-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-background text-2xl">
+          {productImageLabel(product)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">
+            {product.name.startsWith('Generic') ? product.name : `Generic ${product.name}`}
+          </p>
+          <p className="text-xs text-muted-foreground">Vendor will choose the closest available option.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onSelect}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function GroceryListEditor() {
-  const { groceryItems, addGroceryItem, updateGroceryItem, removeGroceryItem, selectedGroceryVendor, setSelectedGroceryVendor } = useOrderFlow();
-  const { toast } = useToast();
+  const {
+    groceryItems,
+    addGroceryItem,
+    updateGroceryItem,
+    removeGroceryItem,
+    selectedGroceryVendor,
+    setSelectedGroceryVendor,
+  } = useOrderFlow();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [query, setQuery] = React.useState('');
-  const [suggestions, setSuggestions] = React.useState<GrocerySuggestion[]>([]);
+  const [results, setResults] = React.useState<ProductSearchResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [listening, setListening] = React.useState(false);
+  const [selection, setSelection] = React.useState<PendingSelection | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = React.useState('');
+  const [quantity, setQuantity] = React.useState(1);
+  const [customWeight, setCustomWeight] = React.useState('500');
+  const [removedIntentItems, setRemovedIntentItems] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
-    if (!query.trim()) {
-      setSuggestions([]);
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults(null);
+      setLoading(false);
       return;
     }
+
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setLoading(true);
       try {
-        const results = await scalableGroceryAIService.searchProducts(query.trim());
-        const richSuggestions = await Promise.all(
-          results.slice(0, 6).map(async (product) => {
-            let packOptions: QuantityOption[] = product.availableQuantities;
-            try {
-              const smartOptions = await scalableGroceryAIService.getSmartQuantitySuggestions(product);
-              if (smartOptions.length > 0) {
-                packOptions = smartOptions;
-              }
-            } catch {
-              packOptions = product.availableQuantities;
-            }
-
-            return {
-              product,
-              packOptions: dedupePackOptions(packOptions).slice(0, 4),
-            };
-          })
-        );
-        setSuggestions(richSuggestions);
-      } catch {
-        setSuggestions([]);
+        const params = new URLSearchParams({ q: trimmed, type: 'grocery' });
+        const response = await fetch(`/api/search?${params.toString()}`, { signal: controller.signal });
+        const data = await response.json();
+        setResults(data);
+        setRemovedIntentItems(new Set());
+      } catch (error) {
+        if (!controller.signal.aborted) setResults(null);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
-    }, 250);
-    return () => window.clearTimeout(timer);
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [query]);
 
-  const addByName = React.useCallback(
-    (name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      const defaults = getUnitDefaults(trimmed);
-      addGroceryItem({
-        name: trimmed.replace(/\b\w/g, (c) => c.toUpperCase()),
-        quantity: defaults.quantity,
-        unit: defaults.unit,
-        showUnit: defaults.showUnit,
-      });
-      setQuery('');
-      setSuggestions([]);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    },
-    [addGroceryItem]
-  );
-
-  const addProduct = React.useCallback(
-    (product: DynamicProduct, option?: QuantityOption) => {
-      const defaults = getUnitDefaults(product.name);
-      const unit = option ? normalizeUnit(option.unit) : defaults.unit;
-      const item: Omit<GroceryListItem, 'id'> = {
-        name: titleCase(product.name),
-        brand: product.brand ? titleCase(product.brand) : undefined,
-        packSize: option?.packSize,
-        productSource: option?.source || getSourceLabel(product.source),
-        quantity: option?.quantity ?? defaults.quantity,
-        unit,
-        showUnit: true,
-      };
-
-      addGroceryItem(item);
-      setQuery('');
-      setSuggestions([]);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    },
-    [addGroceryItem]
-  );
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (suggestions[0]) addProduct(suggestions[0].product, suggestions[0].packOptions[0]);
-      else addByName(query);
-    }
+  const openSelection = (nextSelection: PendingSelection) => {
+    const variants = variantsFor(nextSelection);
+    setSelection(nextSelection);
+    setSelectedVariantId(variants[0]?.id ?? '');
+    setQuantity(1);
+    setCustomWeight('500');
   };
 
-  const startVoice = () => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast({
-        title: 'Voice not supported',
-        description: 'Try typing your list instead.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-IN';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    setListening(true);
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript as string;
-      setQuery(transcript);
-      const parsed = parseGroceryVoiceInput(transcript);
-      if (parsed.length > 0) {
-        parsed.forEach((item) => addGroceryItem(item));
-        setQuery('');
-        toast({ title: 'Added from voice', description: `${parsed.length} item(s) added` });
-      }
+  const addSelectionToCart = () => {
+    if (!selection) return;
+    const variants = variantsFor(selection);
+    const selectedVariant = variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
+    const isCustomWeight = selectedVariant?.id === 'fresh-custom';
+    const unit = normalizeUnit(isCustomWeight ? 'g' : selectedVariant?.unitCode);
+    const selectedQuantity = isCustomWeight
+      ? Math.max(1, Number(customWeight) || 500)
+      : selectedVariant?.quantityValue ?? 1;
+    const product = selection.product;
+    const brand = selection.type === 'product' ? selection.product.brand ?? undefined : undefined;
+
+    const item: Omit<GroceryListItem, 'id'> = {
+      name: titleCase(product.name.replace(/^Generic\s+/i, '')),
+      brand,
+      packSize: isCustomWeight ? `${selectedQuantity}g` : selectedVariant?.label,
+      productSource: selection.type === 'generic' ? 'Vendor will choose' : 'Supabase catalog',
+      quantity: selection.type === 'generic' && product.productKind !== 'fresh' ? quantity : selectedQuantity * quantity,
+      unit,
+      showUnit: true,
     };
-    recognition.onerror = () => {
-      toast({ variant: 'destructive', title: 'Could not hear you', description: 'Please try again.' });
-    };
-    recognition.onend = () => setListening(false);
-    recognition.start();
+
+    addGroceryItem(item);
+    setSelection(null);
+    setQuery('');
+    setResults(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
+
+  const addIntentItem = (label: string) => {
+    openSelection({
+      type: 'generic',
+      product: {
+        id: `intent-${label.toLowerCase().replace(/\s+/g, '-')}`,
+        type: 'generic',
+        name: label,
+        category: 'grocery',
+        productKind: label.toLowerCase().match(/tomato|banana|flower/) ? 'fresh' : 'generic',
+        score: 100,
+      },
+    });
+  };
+
+  const addIntentList = (intent: ShoppingIntentResult) => {
+    intent.items
+      .filter((item) => !removedIntentItems.has(item.id))
+      .forEach((item) => {
+        addGroceryItem({
+          name: titleCase(item.label.replace(/^Generic\s+/i, '')),
+          quantity: item.defaultQuantity,
+          unit: 'piece',
+          productSource: intent.name,
+          showUnit: true,
+        });
+      });
+    setQuery('');
+    setResults(null);
+  };
+
+  const currentVariants = selection ? variantsFor(selection) : [];
+  const selectedVariant = currentVariants.find((variant) => variant.id === selectedVariantId) ?? currentVariants[0];
+  const primaryIntent = results?.intents?.[0];
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-sm text-muted-foreground mb-3">
-          Tell us what you need — we&apos;ll find the best prices on your route.
+      <div className="sticky top-0 z-10 -mx-1 bg-background/95 px-1 pb-2 backdrop-blur">
+        <p className="mb-3 text-sm text-muted-foreground">
+          Search products from stores on your route. Choose brand, pack size, then add.
         </p>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="e.g. tomatoes, milk, bread…"
-            className="pl-9 pr-12 h-12 rounded-xl border-0 bg-muted/50 text-base"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search cheese, tomato, bread, birthday…"
+            className="h-12 rounded-xl border-0 bg-muted/50 pl-9 text-base"
             autoComplete="off"
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full"
-            onClick={startVoice}
-            aria-label="Voice input"
-          >
-            {listening ? (
-              <MicOff className="h-4 w-4 text-primary animate-pulse" />
-            ) : (
-              <Mic className="h-4 w-4 text-muted-foreground" />
-            )}
-          </Button>
         </div>
-        {(loading || suggestions.length > 0) && query.trim() && (
-          <div className="mt-2 rounded-xl bg-muted/40 overflow-hidden">
-            {loading ? (
-              <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Searching…
-              </div>
-            ) : (
-              suggestions.map(({ product, packOptions }) => (
-                <div
-                  key={`${product.source}-${product.id}`}
-                  className="border-b border-border/30 px-3 py-3 last:border-0"
-                >
-                  <button
-                    type="button"
-                    className="w-full text-left"
-                    onClick={() => addProduct(product, packOptions[0])}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">{product.name}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {product.brand ? `${product.brand} · ` : ''}
-                          {getSourceLabel(product.source)}
-                        </p>
-                      </div>
-                      {product.brand ? (
-                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                          Brand
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
-
-                  {packOptions.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {packOptions.map((option, index) => (
-                        <button
-                          key={`${option.quantity}-${option.unit}-${option.packSize ?? index}`}
-                          type="button"
-                          className="rounded-full border border-primary/20 bg-background px-2.5 py-1 text-xs font-medium hover:border-primary/50 hover:bg-primary/10"
-                          onClick={() => addProduct(product, option)}
-                        >
-                          {option.packSize || `${option.quantity} ${normalizeUnit(option.unit)}`}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
-        )}
       </div>
 
-      {groceryItems.length > 0 ? (
-        <div>
-          <p className="mb-2 text-right text-xs text-muted-foreground">
-            Tap the unit label to pick kg, packet, and more
-          </p>
-          <div className="divide-y divide-border/40">
-            {groceryItems.map((item) => (
-              <GroceryItemRow
-                key={item.id}
-                item={item}
-                onChange={(patch) => updateGroceryItem(item.id, patch)}
-                onRemove={() => removeGroceryItem(item.id)}
-              />
-            ))}
+      {loading ? (
+        <div className="flex items-center gap-2 rounded-xl bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Searching products…
+        </div>
+      ) : null}
+
+      {primaryIntent ? (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Shopping List</p>
+              <h3 className="text-lg font-bold">{primaryIntent.name}</h3>
+              {primaryIntent.description ? (
+                <p className="text-sm text-muted-foreground">{primaryIntent.description}</p>
+              ) : null}
+            </div>
+            <Button type="button" size="sm" onClick={() => addIntentList(primaryIntent)}>
+              Add list
+            </Button>
+          </div>
+          <div className="mt-3 space-y-2">
+            {primaryIntent.items
+              .filter((item) => !removedIntentItems.has(item.id))
+              .map((item) => (
+                <div key={item.id} className="flex items-center gap-2 rounded-xl bg-background p-2">
+                  <span className="flex-1 text-sm font-medium">{item.label}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => addIntentItem(item.label)}>
+                    Choose
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground"
+                    onClick={() => setRemovedIntentItems((prev) => new Set([...prev, item.id]))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
           </div>
         </div>
+      ) : null}
+
+      {results?.products?.length ? (
+        <div className="space-y-2">
+          {results.products.map((product) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              onSelect={() => openSelection({ type: 'product', product })}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {results?.genericProducts?.length ? (
+        <div className="space-y-2">
+          {results.genericProducts.map((product) => (
+            <GenericCard
+              key={product.id}
+              product={product}
+              onSelect={() => openSelection({ type: 'generic', product })}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {!loading && query.trim().length >= 2 && !results?.products?.length && !results?.genericProducts?.length && !primaryIntent ? (
+        <GenericCard
+          product={{
+            id: `generic-${query.trim().toLowerCase()}`,
+            type: 'generic',
+            name: `Generic ${query.trim()}`,
+            category: 'grocery',
+            productKind: 'generic',
+            score: 70,
+          }}
+          onSelect={() =>
+            openSelection({
+              type: 'generic',
+              product: {
+                id: `generic-${query.trim().toLowerCase()}`,
+                type: 'generic',
+                name: `Generic ${query.trim()}`,
+                category: 'grocery',
+                productKind: 'generic',
+                score: 70,
+              },
+            })
+          }
+        />
+      ) : null}
+
+      {groceryItems.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">Added items</p>
+          {groceryItems.map((item) => (
+            <div key={item.id} className="rounded-xl border border-border/60 bg-background p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{item.brand ? `${item.brand} ` : ''}{item.name}</p>
+                  <p className="text-sm text-muted-foreground">{item.packSize || item.productSource || 'Vendor will confirm pack'}</p>
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">Qty</p>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeGroceryItem(item.id)}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+              <div className="mt-2 flex w-fit items-center rounded-full border border-border bg-muted/30 p-0.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => updateGroceryItem(item.id, { quantity: Math.max(1, item.quantity - 1) })}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <span className="min-w-8 text-center text-sm font-semibold tabular-nums">{item.quantity}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => updateGroceryItem(item.id, { quantity: item.quantity + 1 })}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
-        <p className="text-center text-sm text-muted-foreground py-8">
-          Your list is empty — search or use the mic to add items
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          Search to discover products. Nothing is added until you choose a pack and tap Add to Cart.
         </p>
       )}
 
@@ -302,6 +419,74 @@ export function GroceryListEditor() {
         selectedVendor={selectedGroceryVendor}
         onSelectVendor={setSelectedGroceryVendor}
       />
+
+      <Sheet open={Boolean(selection)} onOpenChange={(open) => !open && setSelection(null)}>
+        <SheetContent side="bottom" className="rounded-t-2xl">
+          {selection ? (
+            <div className="space-y-5">
+              <SheetHeader>
+                <SheetTitle className="text-left">
+                  {selection.type === 'product' && selection.product.brand
+                    ? `${selection.product.brand} ${selection.product.name}`
+                    : selection.product.name}
+                </SheetTitle>
+              </SheetHeader>
+
+              <div>
+                <p className="mb-2 text-sm font-semibold">
+                  {selection.product.productKind === 'fresh' ? 'Choose Quantity' : 'Choose Pack Size'}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {currentVariants.map((variant) => (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      className={`rounded-xl border p-3 text-left text-sm font-medium ${
+                        selectedVariantId === variant.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background'
+                      }`}
+                      onClick={() => setSelectedVariantId(variant.id)}
+                    >
+                      {variant.label}
+                      {formatPrice(variant.mrp) ? <span className="mt-1 block text-xs">{formatPrice(variant.mrp)}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedVariant?.id === 'fresh-custom' ? (
+                <div>
+                  <p className="mb-2 text-sm font-semibold">Custom Weight</p>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={customWeight}
+                    onChange={(event) => setCustomWeight(event.target.value)}
+                    placeholder="Weight in grams"
+                  />
+                </div>
+              ) : null}
+
+              <div>
+                <p className="mb-2 text-sm font-semibold">Quantity</p>
+                <div className="flex w-fit items-center rounded-full border border-border bg-muted/30 p-1">
+                  <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-10 text-center font-bold">{quantity}</span>
+                  <Button type="button" variant="ghost" size="icon" className="rounded-full" onClick={() => setQuantity((value) => value + 1)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <Button type="button" className="h-12 w-full rounded-xl text-base font-semibold" onClick={addSelectionToCart}>
+                <ShoppingBag className="mr-2 h-4 w-4" />
+                Add to Cart
+              </Button>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
